@@ -11,13 +11,13 @@
 - [ ] A stranger completes install, doctor, dry plan, live run, result recovery, and cleanup
 - [x] Dogfood protocol documented
 - [x] Alpha limitations stated in README
-- [x] Enable GitHub private vulnerability reporting after repository becomes public
+- [x] Dependency vulnerability alerts and automated security fixes enabled
 - [ ] Exact release commit succeeds on the complete CI matrix
-- [ ] At least 25 current runs from three people cover macOS and Linux
 - [ ] Fresh Fly/Tigris evidence includes source transport, result recovery, cost,
       region, and verified compute/source/result cleanup
 - [ ] Public Git history contains no internal strategy or provider identifiers
 - [ ] All logged-out landing-page, repository, install, and dogfood links work
+- [ ] Enable GitHub private vulnerability reporting after repository becomes public
 - [ ] Create the next public release tag only after every current gate passes
 
 Run `python3 scripts/public_readiness.py --release` for the executable gate. The
@@ -33,9 +33,24 @@ source and result artifacts, and also record region and a positive cost estimate
 Every job must also carry a deterministic fingerprint of the installed Elsewhere
 runtime captured when its plan was created, plus the clean Git revision when one is
 available. Re-exporting an older ledger entry never upgrades that provenance to the
-exporter's current checkout.
+exporter's current checkout. The gate also binds the proof to the exact acceptance
+and export code that produced it.
 At least one external participant must record all six journey steps: `install`,
 `doctor`, `dry_plan`, `live_run`, `result_recovery`, and `cleanup`.
+
+## Operational maturity after public alpha
+
+The broader dogfood target remains an explicit next-stage gate:
+
+- [ ] At least 25 current runs from three people cover macOS and Linux
+- [ ] At least two compute providers have current lifecycle evidence
+- [ ] At least three intentional failures prove recovery and cleanup behavior
+
+Run `python3 scripts/public_readiness.py --maturity` for this larger bar. It includes
+every public-alpha release check and adds the multi-user, cross-platform,
+multi-provider, and failure-recovery targets. These targets measure operational
+breadth; they do not replace the exact-current lifecycle proof or outsider journey
+required for the alpha.
 
 ## Audit note
 

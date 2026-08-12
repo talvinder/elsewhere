@@ -20,7 +20,8 @@ python3 scripts/export_public_run_evidence.py JOB_ID \
 The exporter omits the raw job ID, commands, output, account and resource names,
 artifact locations, signed URLs, and local paths. It includes hashes for the result
 bundle, sanitized job evidence, exporter revision, and an immutable fingerprint of
-the installed Elsewhere runtime that created the job. Source checkouts also record
+the acceptance/export code used to create the proof, plus an immutable fingerprint
+of the installed Elsewhere runtime that created the job. Source checkouts also record
 their clean Git revision. Legacy jobs without that captured provenance cannot certify
 a current release. It also distinguishes a source
 artifact that was transported and cleaned from a run that did not use source
@@ -50,8 +51,17 @@ Run the complete release gate with:
 python3 scripts/public_readiness.py --release
 ```
 
-The gate requires recent evidence from at least three people across macOS and Linux,
-at least 25 runs across two compute providers, three intentional failures, a complete
-Fly compute plus Tigris artifact lifecycle, and one external install-to-cleanup
-journey. Do not add provider IDs, personal data, credentials, or raw job ledgers to
-this directory.
+The public-alpha gate requires a complete exact-current Fly compute plus Tigris
+artifact lifecycle and one external install-to-cleanup journey. It also verifies the
+public history and every logged-out surface advertised to a new user.
+
+Run the broader operational maturity gate with:
+
+```bash
+python3 scripts/public_readiness.py --maturity
+```
+
+That gate retains the longer-term target: at least three people across macOS and
+Linux, at least 25 runs across two compute providers, and three intentional failures.
+Do not add provider IDs, personal data, credentials, or raw job ledgers to this
+directory.

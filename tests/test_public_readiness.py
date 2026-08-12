@@ -39,6 +39,7 @@ class PublicReadinessTests(unittest.TestCase):
                 "job_evidence_sha256": f"{index:064x}",
                 "capture_method": "elsewhere-job-store-v1",
                 "evidence_exporter_revision": "b" * 40,
+                "evidence_capture_sha256": "e" * 64,
                 "runtime_revision": "b" * 40,
                 "runtime_code_sha256": "f" * 64,
                 "runtime_capture_method": "source-git-v1",
@@ -79,9 +80,50 @@ class PublicReadinessTests(unittest.TestCase):
                 "journeys": [journey],
             }))
             checks = public_readiness.validate_evidence(
-                path, now=datetime(2026, 8, 12, 12, tzinfo=UTC)
+                path, now=datetime(2026, 8, 12, 12, tzinfo=UTC), gate="maturity"
             )
         self.assertTrue(all(item["passed"] for item in checks), checks)
+
+    def test_release_gate_keeps_lifecycle_proof_without_maturity_targets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "evidence.json"
+            path.write_text(json.dumps({
+                "generated_at": "2026-08-12T00:00:00+00:00",
+                "participants": [{
+                    "id": "p1", "platform": "macos", "role": "maintainer"
+                }],
+                "runs": [{
+                    "id": "run-1", "participant_id": "p1", "provider": "fly",
+                    "artifact_provider": "tigris", "scenario": "success",
+                    "completed_at": "2026-08-11T12:00:00+00:00",
+                    "region": "sin", "estimated_cost_usd": 0.02,
+                    "result_verified": True, "cleanup_verified": True,
+                    "source_transport_verified": True,
+                    "result_bundle_sha256": "a" * 64,
+                    "job_evidence_sha256": "b" * 64,
+                    "capture_method": "elsewhere-job-store-v1",
+                    "evidence_exporter_revision": "c" * 40,
+                    "evidence_capture_sha256": "e" * 64,
+                    "runtime_revision": "c" * 40,
+                    "runtime_code_sha256": "f" * 64,
+                    "runtime_capture_method": "source-git-v1",
+                    "elsewhere_version": "0.2.0a1",
+                }],
+                "journeys": [],
+            }))
+            checks = public_readiness.validate_evidence(
+                path,
+                now=datetime(2026, 8, 12, 12, tzinfo=UTC),
+                gate="release",
+            )
+        names = {item["name"] for item in checks}
+        self.assertIn("Fly and Tigris lifecycle proof", names)
+        self.assertIn("stranger journey", names)
+        self.assertNotIn("dogfood run count", names)
+        self.assertNotIn("dogfood participants", names)
+        self.assertNotIn("dogfood platforms", names)
+        self.assertNotIn("provider neutrality proof", names)
+        self.assertNotIn("failure recovery proof", names)
 
     def test_evidence_gate_rejects_unlinked_manual_journey_checkboxes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -373,6 +415,7 @@ class PublicReadinessTests(unittest.TestCase):
                 "result_verified": True,
                 "cleanup_verified": True,
                 "evidence_exporter_revision": "e" * 40,
+                "evidence_capture_sha256": "c" * 64,
                 "runtime_revision": "a" * 40,
                 "runtime_code_sha256": "f" * 64,
             }]}))
@@ -394,14 +437,100 @@ class PublicReadinessTests(unittest.TestCase):
                 "result_verified": True,
                 "cleanup_verified": True,
                 "evidence_exporter_revision": "e" * 40,
+                "evidence_capture_sha256": "c" * 64,
                 "runtime_revision": "a" * 40,
                 "runtime_code_sha256": "f" * 64,
             }]}))
-            with mock.patch.object(
-                public_readiness, "runtime_code_sha256", return_value="f" * 64
+            successful_git_check = public_readiness.subprocess.CompletedProcess(
+                [], 0, stdout="", stderr=""
+            )
+            with (
+                mock.patch.object(
+                    public_readiness, "runtime_code_sha256", return_value="f" * 64
+                ),
+                mock.patch.object(
+                    public_readiness, "evidence_capture_sha256", return_value="c" * 64
+                ),
+                mock.patch.object(
+                    public_readiness,
+                    "evidence_capture_sha256_at_revision",
+                    return_value="c" * 64,
+                ),
+                mock.patch.object(
+                    public_readiness,
+                    "run",
+                    side_effect=[successful_git_check] * 2,
+                ),
             ):
                 check = public_readiness.live_proof_revision_check(path, Path(directory))
         self.assertTrue(check["passed"])
+
+    def test_live_proof_revision_rejects_changed_capture_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "evidence.json"
+            path.write_text(json.dumps({"runs": [{
+                "provider": "fly",
+                "artifact_provider": "tigris",
+                "completed_at": "2026-08-12T00:00:00+00:00",
+                "source_transport_verified": True,
+                "result_verified": True,
+                "cleanup_verified": True,
+                "evidence_exporter_revision": "e" * 40,
+                "evidence_capture_sha256": "c" * 64,
+                "runtime_revision": "a" * 40,
+                "runtime_code_sha256": "f" * 64,
+            }]}))
+            with (
+                mock.patch.object(
+                    public_readiness, "runtime_code_sha256", return_value="f" * 64
+                ),
+                mock.patch.object(
+                    public_readiness, "evidence_capture_sha256", return_value="d" * 64
+                ),
+            ):
+                check = public_readiness.live_proof_revision_check(path, Path(directory))
+        self.assertFalse(check["passed"])
+        self.assertIn("evidence capture code differs", check["message"])
+
+    def test_live_proof_revision_rejects_capture_not_from_claimed_revision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "evidence.json"
+            path.write_text(json.dumps({"runs": [{
+                "provider": "fly",
+                "artifact_provider": "tigris",
+                "completed_at": "2026-08-12T00:00:00+00:00",
+                "source_transport_verified": True,
+                "result_verified": True,
+                "cleanup_verified": True,
+                "evidence_exporter_revision": "e" * 40,
+                "evidence_capture_sha256": "c" * 64,
+                "runtime_revision": "a" * 40,
+                "runtime_code_sha256": "f" * 64,
+            }]}))
+            successful_git_check = public_readiness.subprocess.CompletedProcess(
+                [], 0, stdout="", stderr=""
+            )
+            with (
+                mock.patch.object(
+                    public_readiness, "runtime_code_sha256", return_value="f" * 64
+                ),
+                mock.patch.object(
+                    public_readiness, "evidence_capture_sha256", return_value="c" * 64
+                ),
+                mock.patch.object(
+                    public_readiness,
+                    "evidence_capture_sha256_at_revision",
+                    return_value="d" * 64,
+                ),
+                mock.patch.object(
+                    public_readiness,
+                    "run",
+                    side_effect=[successful_git_check] * 2,
+                ),
+            ):
+                check = public_readiness.live_proof_revision_check(path, Path(directory))
+        self.assertFalse(check["passed"])
+        self.assertIn("not from revision", check["message"])
 
     def test_history_check_summarizes_scanner_findings_without_secret_values(self):
         report = {
