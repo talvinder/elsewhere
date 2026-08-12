@@ -47,6 +47,7 @@ from agent_capacity.onboarding import (
     initial_config,
     required_init_values,
 )
+from agent_capacity.provenance import runtime_provenance
 from agent_capacity.providers import contract_complete, get_provider
 from agent_capacity.results import (
     inspect_result_bundle,
@@ -1544,6 +1545,7 @@ def build_dispatch_plan(
         raise SystemExit(f"no provider is ready: {json.dumps(rejected)}")
 
     normalized_result_paths = validate_result_paths(result_paths)
+    runtime = runtime_provenance()
     job = {
         "id": uuid.uuid4().hex,
         "name": make_job_name(workload),
@@ -1560,6 +1562,10 @@ def build_dispatch_plan(
         "max_runtime_seconds": max_runtime_seconds,
         "estimated_cost_usd": estimated_cost_usd,
         "result_paths": normalized_result_paths,
+        "runtime_revision": runtime["revision"],
+        "runtime_dirty": runtime["dirty"],
+        "runtime_code_sha256": runtime["code_sha256"],
+        "runtime_capture_method": runtime["capture_method"],
         "created_at": int(time.time()),
         "state": "planned",
         "fallback_providers": [candidate for candidate in ordered_providers if candidate != selected],

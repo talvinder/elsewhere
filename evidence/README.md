@@ -19,7 +19,10 @@ python3 scripts/export_public_run_evidence.py JOB_ID \
 
 The exporter omits the raw job ID, commands, output, account and resource names,
 artifact locations, signed URLs, and local paths. It includes hashes for the result
-bundle, sanitized job evidence, and exporter revision. It also distinguishes a source
+bundle, sanitized job evidence, exporter revision, and an immutable fingerprint of
+the installed Elsewhere runtime that created the job. Source checkouts also record
+their clean Git revision. Legacy jobs without that captured provenance cannot certify
+a current release. It also distinguishes a source
 artifact that was transported and cleaned from a run that did not use source
 transport; only the former satisfies the complete Fly/Tigris lifecycle gate. These
 records can then be

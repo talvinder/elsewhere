@@ -55,6 +55,18 @@ def build_record(job: dict[str, Any], participant_id: str, scenario: str) -> dic
         )
     if scenario not in {"success", "expected_failure"}:
         raise ValueError("scenario must be success or expected_failure")
+    runtime_revision = job.get("runtime_revision")
+    runtime_hash = str(job.get("runtime_code_sha256", ""))
+    runtime_method = job.get("runtime_capture_method")
+    if not SHA256.fullmatch(runtime_hash):
+        raise ValueError("job has no immutable runtime code fingerprint")
+    if runtime_method == "source-git-v1":
+        if not re.fullmatch(r"[0-9a-f]{40}", str(runtime_revision or "")):
+            raise ValueError("job has no immutable runtime revision provenance")
+        if job.get("runtime_dirty") is not False:
+            raise ValueError("job runtime came from an uncommitted checkout")
+    elif runtime_method != "python-package-v1":
+        raise ValueError("job runtime provenance used an unsupported capture method")
     if job.get("provider") not in {"fly", "azure"}:
         raise ValueError("only remote Fly or Azure jobs qualify")
     if job.get("state") != "cleaned" or job.get("provider_absent") is not True:
@@ -124,6 +136,8 @@ def build_record(job: dict[str, Any], participant_id: str, scenario: str) -> dic
         "job_hash": public_job_hash,
         "provider": job["provider"],
         "region": region,
+        "runtime_revision": runtime_revision,
+        "runtime_code_sha256": runtime_hash,
         "result_artifact_cleanup": result_cleanup,
         "source_artifact_cleanup": source_cleanup,
     }
@@ -146,6 +160,9 @@ def build_record(job: dict[str, Any], participant_id: str, scenario: str) -> dic
         "job_evidence_sha256": proof_hash,
         "capture_method": "elsewhere-job-store-v1",
         "evidence_exporter_revision": _revision(),
+        "runtime_revision": runtime_revision,
+        "runtime_code_sha256": runtime_hash,
+        "runtime_capture_method": runtime_method,
         "elsewhere_version": __version__,
     }
 
