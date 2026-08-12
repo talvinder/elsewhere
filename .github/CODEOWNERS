@@ -1,0 +1,7 @@
+# Keep changes to the repository trust boundary visibly owned and reviewed.
+/.github/ @talvinder
+/scripts/check-no-internal.sh @talvinder
+/scripts/public_readiness.py @talvinder
+/src/agent_capacity/artifact_transport.py @talvinder
+/src/agent_capacity/s3_artifacts.py @talvinder
+/src/agent_capacity/results.py @talvinder

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Block internal/private content from being committed to this public repo.
+# Enable with: sh scripts/install-hooks.sh
+exec "$(git rev-parse --show-toplevel)/scripts/check-no-internal.sh" --staged

@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-08-12T20:03:26+00:00",
+  "journeys": [],
+  "participants": [
+    {
+      "id": "maintainer-1",
+      "platform": "macos",
+      "role": "maintainer"
+    }
+  ],
+  "runs": [
+    {
+      "artifact_provider": "tigris",
+      "capture_method": "elsewhere-job-store-v1",
+      "cleanup_verified": true,
+      "completed_at": "2026-08-12T20:01:43+00:00",
+      "elsewhere_version": "0.2.0a1",
+      "estimated_cost_usd": 0.02,
+      "evidence_exporter_revision": "af4d92c93744e82a39037a8fd43deb96f3996afb",
+      "id": "run-cafd36835a56503b0b36",
+      "job_evidence_sha256": "b43531f1c86febe598f81e4aa1c42c9064a5888e1ede5ee2b365d9920f3a515a",
+      "participant_id": "maintainer-1",
+      "provider": "fly",
+      "region": "sin",
+      "result_bundle_sha256": "07513b2cd2e540c52777683fe0424d169e2f6b8f0eb0892615639097c23894bc",
+      "result_verified": true,
+      "scenario": "success",
+      "source_transport_verified": true
+    }
+  ]
+}

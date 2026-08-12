@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "routing": {
+    "default": "azure",
+    "fallbacks": ["fly"],
+    "workloads": {}
+  },
+  "providers": {
+    "fly": {
+      "enabled": false,
+      "app": "",
+      "org": "",
+      "region": "bom",
+      "region_fallbacks": ["sin", "hkg"],
+      "cpu_kind": "shared"
+    },
+    "azure": {
+      "enabled": true,
+      "subscription": "YOUR_SUBSCRIPTION_ID",
+      "resource_group": "YOUR_RESOURCE_GROUP",
+      "location": "centralindia"
+    }
+  },
+  "artifact_store": {
+    "provider": "azure-blob",
+    "account": "YOUR_STORAGE_ACCOUNT",
+    "container": "elsewhere-artifacts",
+    "subscription": "YOUR_SUBSCRIPTION_ID",
+    "sas_ttl_minutes": 60
+  },
+  "trust": {
+    "approved": false,
+    "inherit_global": false
+  }
+}

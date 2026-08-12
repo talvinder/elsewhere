@@ -1,0 +1,4 @@
+interface:
+  display_name: "Elsewhere"
+  short_description: "Route agent workloads safely across local and cloud"
+  default_prompt: "Use $agent-capacity to let Elsewhere decide whether work should run here or continue on configured cloud compute."

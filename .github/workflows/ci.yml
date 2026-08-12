@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+      - run: python -m pip install pip-audit==2.10.1
+      - run: python -m pip_audit --strict .
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install -e '.[dev]'
+      - run: sh scripts/quality.sh
+      - if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
+        run: sh scripts/coverage.sh
+      - run: python -m pip install build
+      - run: python -m build
+      - run: python scripts/check_distribution.py
+      - run: python -m venv .release-smoke
+      - run: .release-smoke/bin/python -m pip install "dist/elsewhere_run-$(cat VERSION)-py3-none-any.whl"
+      - run: .release-smoke/bin/python -c "import agent_capacity; assert agent_capacity.__version__ == open('VERSION').read().strip()"
+      - run: .release-smoke/bin/elsewhere --help
+      - run: .release-smoke/bin/elsewhere mcp-server --help
