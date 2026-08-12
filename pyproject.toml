@@ -69,6 +69,6 @@ relative_files = true
 patch = ["subprocess"]
 
 [tool.coverage.report]
-fail_under = 47
+fail_under = 53
 show_missing = true
 skip_covered = true
