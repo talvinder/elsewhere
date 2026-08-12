@@ -16,6 +16,7 @@ from agent_capacity.cli import (
     evaluate_trust,
     load_config,
     main,
+    make_parser,
     revoke_trust,
     trust_status,
 )
@@ -25,6 +26,19 @@ CLI = ROOT / "src/agent_capacity/cli.py"
 
 
 class CliOnboardingTests(unittest.TestCase):
+    def test_top_level_help_guides_first_run_without_leaking_internal_commands(self):
+        parser = make_parser()
+        help_text = parser.format_help()
+
+        self.assertIn("New here? Run `elsewhere status --human`", help_text)
+        self.assertIn("route", help_text)
+        self.assertIn(
+            "plan or execute a local-versus-remote placement decision", help_text
+        )
+        self.assertNotIn("sample-memory", help_text)
+        self.assertNotIn("_local-worker", help_text)
+        self.assertNotIn("==SUPPRESS==", help_text)
+
     def test_noninteractive_fly_init_creates_a_private_tigris_config(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

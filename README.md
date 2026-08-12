@@ -49,6 +49,30 @@ You choose the boundary:
 The decision stays visible. So do cost, location, privacy boundaries, and cleanup.
 No mystery cloud. No surprise machine left running for the weekend.
 
+## Try it in two minutes
+
+Elsewhere requires Python 3.11 or newer. With [`uv`](https://docs.astral.sh/uv/)
+installed, inspect your machine and run one harmless local command under Elsewhere's
+placement decision:
+
+```sh
+uv tool install git+https://github.com/talvinder/elsewhere.git
+elsewhere status --human
+elsewhere route \
+  --workload light \
+  --execution local \
+  --command "printf elsewhere-ok" \
+  --execute
+```
+
+You should see `elsewhere-ok` returned with the local capacity decision. This path
+needs no cloud account, uploads nothing, and creates no billable resource.
+
+When you are ready to let work leave the laptop, continue to
+[Approve the boundary once](#approve-the-boundary-once) and the provider setup in
+[Install and connect a cloud](#install-and-connect-a-cloud). Remote routes stay dry
+until you explicitly add `--execute`.
+
 ## See what is moving
 
 ```sh
@@ -136,12 +160,13 @@ elsewhere route \
   --execute
 ```
 
-## Install
+## Install and connect a cloud
 
-Elsewhere requires Python 3.11 or newer.
+The two-minute local path above works without a provider. To make remote placement
+possible, optionally install the macOS sampler and connect infrastructure you
+already trust:
 
 ```sh
-uv tool install git+https://github.com/talvinder/elsewhere.git
 elsewhere sampler-install
 ```
 

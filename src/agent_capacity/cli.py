@@ -2650,32 +2650,64 @@ def human_doctor(value: dict[str, Any]) -> None:
 
 
 def make_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Route workloads locally or to cloud compute without starving the user's machine")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Decide whether work should run here or on approved cloud compute, "
+            "then keep its lifecycle visible."
+        ),
+        epilog=(
+            "New here? Run `elsewhere status --human`, then try a local dry plan:\n"
+            "  elsewhere route --workload light --execution local "
+            "--command 'printf elsewhere-ok'\n"
+            "Remote routes stay non-billable unless you add --execute."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--version", action="version", version=f"elsewhere {__version__}")
-    commands = parser.add_subparsers(dest="command", required=True)
+    commands = parser.add_subparsers(
+        dest="command", required=True, metavar="COMMAND"
+    )
 
-    status_parser = commands.add_parser("status")
+    status_parser = commands.add_parser(
+        "status", help="show local capacity, reservations, and safe concurrency"
+    )
     status_parser.add_argument("--human", action="store_true")
 
-    queue_parser = commands.add_parser("queue")
+    queue_parser = commands.add_parser(
+        "queue", help="list waiting and running local work"
+    )
     queue_parser.add_argument("--json", action="store_true")
     queue_parser.add_argument("--history-limit", type=int, default=20)
 
-    cleanup_parser = commands.add_parser("cleanup")
+    cleanup_parser = commands.add_parser(
+        "cleanup", help="remove expired leases and orphaned local jobs"
+    )
     cleanup_parser.add_argument("--stale", action="store_true", required=True)
 
-    dashboard_parser = commands.add_parser("dashboard")
+    dashboard_parser = commands.add_parser(
+        "dashboard", help="open the loopback queue and capacity control room"
+    )
     dashboard_parser.add_argument("--host", default="127.0.0.1")
     dashboard_parser.add_argument("--port", type=int, default=8799)
 
-    sample_parser = commands.add_parser("sample-memory", help=argparse.SUPPRESS)
+    sample_parser = commands.add_parser("sample-memory")
     sample_parser.add_argument("--quiet", action="store_true")
-    commands.add_parser("sampler-install")
-    commands.add_parser("sampler-status")
-    commands.add_parser("sampler-remove")
+    commands.add_parser(
+        "sampler-install", help="install the private macOS capacity sampler"
+    )
+    commands.add_parser(
+        "sampler-status", help="check the macOS capacity sampler"
+    )
+    commands.add_parser(
+        "sampler-remove", help="remove the macOS capacity sampler"
+    )
 
-    commands.add_parser("trust-status")
-    trust_approve_parser = commands.add_parser("trust-approve")
+    commands.add_parser(
+        "trust-status", help="inspect the active remote-execution boundary"
+    )
+    trust_approve_parser = commands.add_parser(
+        "trust-approve", help="approve exact providers, source roots, and limits"
+    )
     trust_approve_parser.add_argument("--path", default=str(global_config_path()))
     trust_approve_parser.add_argument("--provider", action="append", choices=SUPPORTED_PROVIDERS, required=True)
     trust_approve_parser.add_argument("--source-root", action="append", required=True)
@@ -2686,29 +2718,43 @@ def make_parser() -> argparse.ArgumentParser:
     trust_approve_parser.add_argument("--max-runtime-seconds", type=int, default=3600)
     trust_approve_parser.add_argument("--max-estimated-cost-usd", type=float, default=5.0)
     trust_approve_parser.add_argument("--expires-days", type=int, default=180)
-    trust_revoke_parser = commands.add_parser("trust-revoke")
+    trust_revoke_parser = commands.add_parser(
+        "trust-revoke", help="revoke an approved execution boundary"
+    )
     trust_revoke_parser.add_argument("--path", default=str(global_config_path()))
 
-    commands.add_parser("mcp-server")
+    commands.add_parser(
+        "mcp-server", help="serve typed Elsewhere tools over MCP"
+    )
 
-    recommend_parser = commands.add_parser("recommend")
+    recommend_parser = commands.add_parser(
+        "recommend", help="show safe local concurrency for a workload"
+    )
     recommend_parser.add_argument("--workload", choices=WORKLOADS, required=True)
     recommend_parser.add_argument("--max-count", type=int, default=8)
 
-    acquire_parser = commands.add_parser("acquire")
+    acquire_parser = commands.add_parser(
+        "acquire", help="reserve shared local capacity"
+    )
     acquire_parser.add_argument("--workload", choices=WORKLOADS, required=True)
     acquire_parser.add_argument("--count", type=int, default=1)
     acquire_parser.add_argument("--owner", default="agent")
     acquire_parser.add_argument("--ttl", type=int, default=DEFAULT_TTL)
 
-    release_parser = commands.add_parser("release")
+    release_parser = commands.add_parser(
+        "release", help="release a shared-capacity reservation"
+    )
     release_parser.add_argument("token")
 
-    renew_parser = commands.add_parser("renew")
+    renew_parser = commands.add_parser(
+        "renew", help="extend a shared-capacity reservation"
+    )
     renew_parser.add_argument("token")
     renew_parser.add_argument("--ttl", type=int, default=DEFAULT_TTL)
 
-    run_parser = commands.add_parser("run")
+    run_parser = commands.add_parser(
+        "run", help="run or queue one command under a managed local lease"
+    )
     run_parser.add_argument("--workload", choices=WORKLOADS, required=True)
     run_parser.add_argument("--count", type=int, default=1)
     run_parser.add_argument("--owner", default="agent")
@@ -2717,7 +2763,9 @@ def make_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--poll-seconds", type=float, default=5.0)
     run_parser.add_argument("remainder", nargs=argparse.REMAINDER)
 
-    commands.add_parser("providers")
+    commands.add_parser(
+        "providers", help="show provider readiness and configured routing"
+    )
 
     init_parser = commands.add_parser("init", help="create a guided Fly/Tigris or Azure configuration")
     init_parser.add_argument("--path", default=".elsewhere.json")
@@ -2739,11 +2787,15 @@ def make_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--source-path")
     doctor_parser.add_argument("--json", action="store_true")
 
-    config_parser = commands.add_parser("init-config")
+    config_parser = commands.add_parser(
+        "init-config", help="write an advanced configuration template"
+    )
     config_parser.add_argument("--path", default=".elsewhere.json")
     config_parser.add_argument("--force", action="store_true")
 
-    dispatch_parser = commands.add_parser("dispatch")
+    dispatch_parser = commands.add_parser(
+        "dispatch", help="plan or execute work on a chosen provider"
+    )
     dispatch_parser.add_argument("--workload", choices=WORKLOADS, required=True)
     dispatch_parser.add_argument("--provider", choices=("auto", *SUPPORTED_PROVIDERS), default="auto")
     dispatch_parser.add_argument("--image", required=True)
@@ -2759,7 +2811,9 @@ def make_parser() -> argparse.ArgumentParser:
     dispatch_parser.add_argument("--result-path", action="append", default=[])
     dispatch_parser.add_argument("--execute", action="store_true")
 
-    route_parser = commands.add_parser("route")
+    route_parser = commands.add_parser(
+        "route", help="plan or execute a local-versus-remote placement decision"
+    )
     route_parser.add_argument("--workload", choices=WORKLOADS, required=True)
     route_parser.add_argument("--execution", choices=("auto", "local", "remote"), default="auto")
     route_parser.add_argument("--provider", choices=("auto", *SUPPORTED_PROVIDERS), default="auto")
@@ -2779,14 +2833,26 @@ def make_parser() -> argparse.ArgumentParser:
     route_parser.add_argument("--poll-seconds", type=float, default=5.0)
     route_parser.add_argument("--execute", action="store_true")
 
-    worker_parser = commands.add_parser("_local-worker", help=argparse.SUPPRESS)
+    worker_parser = commands.add_parser("_local-worker")
     worker_parser.add_argument("job_id")
 
-    for action in ("job-status", "job-logs", "job-results", "job-cancel", "job-cleanup"):
-        action_parser = commands.add_parser(action)
+    job_help = {
+        "job-status": "refresh and show one job's lifecycle state",
+        "job-logs": "show privacy-safe logs for one job",
+        "job-results": "recover and verify one job's result bundle",
+        "job-cancel": "cancel one local or remote job",
+        "job-cleanup": "remove one job after result protection and absence checks",
+    }
+    for action, help_text in job_help.items():
+        action_parser = commands.add_parser(action, help=help_text)
         action_parser.add_argument("job_id")
         if action == "job-cleanup":
             action_parser.add_argument("--discard-results", action="store_true")
+    hidden_commands = {"sample-memory", "_local-worker"}
+    commands._choices_actions = [
+        action for action in commands._choices_actions
+        if action.dest not in hidden_commands
+    ]
     return parser
 
 
