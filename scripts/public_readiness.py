@@ -17,6 +17,10 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from agent_capacity.provenance import runtime_code_sha256  # noqa: E402
+
 EVIDENCE_PATH = ROOT / "evidence/public-readiness.json"
 INTERNAL_NAME = re.compile(
     r"(^|/)(internal|private)/|\.internal\.|"
@@ -31,12 +35,6 @@ ACTION_SHA = re.compile(r"^[0-9a-f]{40}$")
 WORKFLOW_ACTION = re.compile(r"^\s*-\s+uses:\s+([^\s#]+)", re.MULTILINE)
 PARTICIPANT_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 SUPPORTED_EVIDENCE_PROVIDERS = {"fly": "tigris", "azure": "azure-blob"}
-LIVE_PROOF_PATHS = (
-    "pyproject.toml",
-    "scripts/export_public_run_evidence.py",
-    "scripts/v02_acceptance.py",
-    "src/agent_capacity",
-)
 LANDING_URL = "https://talvinder.com/elsewhere/"
 REPOSITORY_URL = "https://github.com/talvinder/elsewhere"
 INSTALL_PROBE_URL = (
@@ -283,6 +281,8 @@ def validate_evidence(path: Path = EVIDENCE_PATH, now: datetime | None = None) -
         and bool(SHA256.fullmatch(str(item.get("result_bundle_sha256", ""))))
         and bool(SHA256.fullmatch(str(item.get("job_evidence_sha256", ""))))
         and bool(REVISION.fullmatch(str(item.get("evidence_exporter_revision", ""))))
+        and bool(SHA256.fullmatch(str(item.get("runtime_code_sha256", ""))))
+        and item.get("runtime_capture_method") in {"source-git-v1", "python-package-v1"}
         and bool(item.get("elsewhere_version"))
         for item in qualifying_runs
     )
@@ -409,7 +409,7 @@ def live_proof_revision_check(
     try:
         evidence = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as error:
-        return result("live proof code revision", False, f"evidence unavailable: {error}")
+        return result("live proof runtime", False, f"evidence unavailable: {error}")
 
     candidates = [
         item
@@ -420,13 +420,15 @@ def live_proof_revision_check(
         and item.get("source_transport_verified") is True
         and item.get("result_verified") is True
         and item.get("cleanup_verified") is True
-        and REVISION.fullmatch(str(item.get("evidence_exporter_revision", "")))
+        and SHA256.fullmatch(str(item.get("runtime_code_sha256", "")))
     ]
     if not candidates:
         return result(
-            "live proof code revision", False, "no complete Fly/Tigris proof revision"
+            "live proof runtime", False, "no complete Fly/Tigris runtime proof"
         )
 
+    runtime_root = root / "src" / "agent_capacity"
+    current_runtime_hash = runtime_code_sha256(runtime_root)
     reasons: list[str] = []
     ordered = sorted(
         candidates,
@@ -434,31 +436,22 @@ def live_proof_revision_check(
         reverse=True,
     )
     for item in ordered:
-        revision = str(item["evidence_exporter_revision"])
-        exists = run(["git", "cat-file", "-e", f"{revision}^{{commit}}"], root)
-        if exists.returncode:
-            reasons.append(f"{revision[:12]} is not a local commit")
-            continue
-        ancestor = run(["git", "merge-base", "--is-ancestor", revision, "HEAD"], root)
-        if ancestor.returncode:
-            reasons.append(f"{revision[:12]} is not an ancestor of HEAD")
-            continue
-        changed = run(
-            ["git", "diff", "--quiet", revision, "--", *LIVE_PROOF_PATHS],
-            root,
-        )
-        if changed.returncode == 0:
+        runtime_hash = str(item["runtime_code_sha256"])
+        revision = str(item.get("runtime_revision") or "")
+        if runtime_hash == current_runtime_hash:
             return result(
-                "live proof code revision",
+                "live proof runtime",
                 True,
-                f"runtime code is unchanged since proven revision {revision[:12]}",
+                (
+                    f"runtime code matches proven revision {revision[:12]}"
+                    if REVISION.fullmatch(revision)
+                    else f"runtime code matches proven package {runtime_hash[:12]}"
+                ),
             )
-        if changed.returncode == 1:
-            reasons.append(f"runtime code changed after {revision[:12]}")
-        else:
-            reasons.append(f"could not compare {revision[:12]} with HEAD")
+        label = revision[:12] if REVISION.fullmatch(revision) else runtime_hash[:12]
+        reasons.append(f"runtime code differs from proof {label}")
 
-    return result("live proof code revision", False, "; ".join(reasons))
+    return result("live proof runtime", False, "; ".join(reasons))
 
 
 def history_check(root: Path = ROOT) -> dict[str, Any]:

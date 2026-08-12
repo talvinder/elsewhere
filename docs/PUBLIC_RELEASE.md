@@ -30,6 +30,10 @@ anonymous IDs, `macos` or `linux`, and a role of `maintainer` or `external`. Eve
 qualifying run is exported from the Elsewhere job ledger after checksum-verified
 result recovery and verified cleanup. Complete Fly proof must use Tigris for both
 source and result artifacts, and also record region and a positive cost estimate.
+Every job must also carry a deterministic fingerprint of the installed Elsewhere
+runtime captured when its plan was created, plus the clean Git revision when one is
+available. Re-exporting an older ledger entry never upgrades that provenance to the
+exporter's current checkout.
 At least one external participant must record all six journey steps: `install`,
 `doctor`, `dry_plan`, `live_run`, `result_recovery`, and `cleanup`.
 

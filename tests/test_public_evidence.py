@@ -14,6 +14,10 @@ def cleaned_job():
     return {
         "id": "private-job-id",
         "provider": "fly",
+        "runtime_revision": "c" * 40,
+        "runtime_dirty": False,
+        "runtime_code_sha256": "d" * 64,
+        "runtime_capture_method": "source-git-v1",
         "state": "cleaned",
         "provider_absent": True,
         "estimated_cost_usd": 0.02,
@@ -44,6 +48,7 @@ class PublicEvidenceTests(unittest.TestCase):
         self.assertEqual(record["provider"], "fly")
         self.assertEqual(record["artifact_provider"], "tigris")
         self.assertEqual(record["capture_method"], "elsewhere-job-store-v1")
+        self.assertEqual(record["runtime_revision"], "c" * 40)
         self.assertTrue(record["source_transport_verified"])
         self.assertNotIn("private-job-id", encoded)
         self.assertNotIn("private-app", encoded)
@@ -73,6 +78,27 @@ class PublicEvidenceTests(unittest.TestCase):
         job["estimated_cost_usd"] = float("nan")
         with self.assertRaisesRegex(ValueError, "positive cost estimate"):
             public_evidence.build_record(job, "tester-1", "success")
+
+    def test_export_rejects_legacy_job_without_runtime_fingerprint(self):
+        job = cleaned_job()
+        job.pop("runtime_code_sha256")
+        with self.assertRaisesRegex(ValueError, "runtime code fingerprint"):
+            public_evidence.build_record(job, "tester-1", "success")
+
+    def test_export_rejects_a_dirty_runtime_checkout(self):
+        job = cleaned_job()
+        job["runtime_dirty"] = True
+        with self.assertRaisesRegex(ValueError, "uncommitted checkout"):
+            public_evidence.build_record(job, "tester-1", "success")
+
+    def test_export_accepts_installed_package_fingerprint_without_git_revision(self):
+        job = cleaned_job()
+        job["runtime_revision"] = None
+        job["runtime_dirty"] = None
+        job["runtime_capture_method"] = "python-package-v1"
+        record = public_evidence.build_record(job, "tester-1", "success")
+        self.assertIsNone(record["runtime_revision"])
+        self.assertEqual(record["runtime_code_sha256"], "d" * 64)
 
 
 if __name__ == "__main__":

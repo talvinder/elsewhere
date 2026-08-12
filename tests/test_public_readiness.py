@@ -39,6 +39,9 @@ class PublicReadinessTests(unittest.TestCase):
                 "job_evidence_sha256": f"{index:064x}",
                 "capture_method": "elsewhere-job-store-v1",
                 "evidence_exporter_revision": "b" * 40,
+                "runtime_revision": "b" * 40,
+                "runtime_code_sha256": "f" * 64,
+                "runtime_capture_method": "source-git-v1",
                 "elsewhere_version": "0.2.0a1",
             })
         journey = {
@@ -119,6 +122,9 @@ class PublicReadinessTests(unittest.TestCase):
                     "job_evidence_sha256": "b" * 64,
                     "capture_method": "elsewhere-job-store-v1",
                     "evidence_exporter_revision": "c" * 40,
+                    "runtime_revision": "c" * 40,
+                    "runtime_code_sha256": "f" * 64,
+                    "runtime_capture_method": "source-git-v1",
                     "elsewhere_version": "0.2.0a1",
                 }],
             }))
@@ -168,6 +174,9 @@ class PublicReadinessTests(unittest.TestCase):
                     "job_evidence_sha256": "b" * 64,
                     "capture_method": "elsewhere-job-store-v1",
                     "evidence_exporter_revision": "c" * 40,
+                    "runtime_revision": "c" * 40,
+                    "runtime_code_sha256": "f" * 64,
+                    "runtime_capture_method": "source-git-v1",
                     "elsewhere_version": "0.2.0a1",
                 } for index in range(25)],
             }))
@@ -194,6 +203,9 @@ class PublicReadinessTests(unittest.TestCase):
             "job_evidence_sha256": "b" * 64,
             "capture_method": "elsewhere-job-store-v1",
             "evidence_exporter_revision": "c" * 40,
+            "runtime_revision": "c" * 40,
+            "runtime_code_sha256": "f" * 64,
+            "runtime_capture_method": "source-git-v1",
             "elsewhere_version": "0.2.0a1",
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -230,6 +242,9 @@ class PublicReadinessTests(unittest.TestCase):
                     "job_evidence_sha256": "b" * 64,
                     "capture_method": "elsewhere-job-store-v1",
                     "evidence_exporter_revision": "c" * 40,
+                    "runtime_revision": "c" * 40,
+                    "runtime_code_sha256": "f" * 64,
+                    "runtime_capture_method": "source-git-v1",
                     "elsewhere_version": "0.2.0a1",
                 }],
             }))
@@ -357,17 +372,16 @@ class PublicReadinessTests(unittest.TestCase):
                 "source_transport_verified": True,
                 "result_verified": True,
                 "cleanup_verified": True,
-                "evidence_exporter_revision": "a" * 40,
+                "evidence_exporter_revision": "e" * 40,
+                "runtime_revision": "a" * 40,
+                "runtime_code_sha256": "f" * 64,
             }]}))
-            completed = lambda code: public_readiness.subprocess.CompletedProcess([], code)
             with mock.patch.object(
-                public_readiness,
-                "run",
-                side_effect=[completed(0), completed(0), completed(1)],
+                public_readiness, "runtime_code_sha256", return_value="d" * 64
             ):
                 check = public_readiness.live_proof_revision_check(path, Path(directory))
         self.assertFalse(check["passed"])
-        self.assertIn("runtime code changed", check["message"])
+        self.assertIn("runtime code differs", check["message"])
 
     def test_live_proof_revision_allows_documentation_only_changes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -379,13 +393,12 @@ class PublicReadinessTests(unittest.TestCase):
                 "source_transport_verified": True,
                 "result_verified": True,
                 "cleanup_verified": True,
-                "evidence_exporter_revision": "a" * 40,
+                "evidence_exporter_revision": "e" * 40,
+                "runtime_revision": "a" * 40,
+                "runtime_code_sha256": "f" * 64,
             }]}))
-            completed = lambda code: public_readiness.subprocess.CompletedProcess([], code)
             with mock.patch.object(
-                public_readiness,
-                "run",
-                side_effect=[completed(0), completed(0), completed(0)],
+                public_readiness, "runtime_code_sha256", return_value="f" * 64
             ):
                 check = public_readiness.live_proof_revision_check(path, Path(directory))
         self.assertTrue(check["passed"])
