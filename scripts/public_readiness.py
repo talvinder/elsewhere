@@ -35,6 +35,10 @@ ACTION_SHA = re.compile(r"^[0-9a-f]{40}$")
 WORKFLOW_ACTION = re.compile(r"^\s*-\s+uses:\s+([^\s#]+)", re.MULTILINE)
 PARTICIPANT_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 SUPPORTED_EVIDENCE_PROVIDERS = {"fly": "tigris", "azure": "azure-blob"}
+EVIDENCE_PROOF_PATHS = (
+    "scripts/export_public_run_evidence.py",
+    "scripts/v02_acceptance.py",
+)
 LANDING_URL = "https://talvinder.com/elsewhere/"
 REPOSITORY_URL = "https://github.com/talvinder/elsewhere"
 INSTALL_PROBE_URL = (
@@ -48,6 +52,32 @@ PUBLIC_USER_AGENT = "Elsewhere-Public-Readiness/0.2"
 
 def result(name: str, passed: bool, message: str) -> dict[str, Any]:
     return {"name": name, "passed": passed, "message": message}
+
+
+def evidence_capture_sha256(root: Path = ROOT) -> str:
+    digest = hashlib.sha256()
+    for relative in EVIDENCE_PROOF_PATHS:
+        path = root / relative
+        digest.update(relative.encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def evidence_capture_sha256_at_revision(
+    revision: str, root: Path = ROOT
+) -> str | None:
+    digest = hashlib.sha256()
+    for relative in EVIDENCE_PROOF_PATHS:
+        completed = run(["git", "show", f"{revision}:{relative}"], root)
+        if completed.returncode:
+            return None
+        digest.update(relative.encode())
+        digest.update(b"\0")
+        digest.update(completed.stdout.encode())
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def run(command: list[str], cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
@@ -219,7 +249,13 @@ def static_checks(root: Path = ROOT) -> list[dict[str, Any]]:
     return checks
 
 
-def validate_evidence(path: Path = EVIDENCE_PATH, now: datetime | None = None) -> list[dict[str, Any]]:
+def validate_evidence(
+    path: Path = EVIDENCE_PATH,
+    now: datetime | None = None,
+    gate: str = "maturity",
+) -> list[dict[str, Any]]:
+    if gate not in {"release", "maturity"}:
+        raise ValueError("evidence gate must be release or maturity")
     if not path.exists():
         return [result("current dogfood evidence", False, f"missing {path.relative_to(ROOT)}")]
     try:
@@ -281,6 +317,7 @@ def validate_evidence(path: Path = EVIDENCE_PATH, now: datetime | None = None) -
         and bool(SHA256.fullmatch(str(item.get("result_bundle_sha256", ""))))
         and bool(SHA256.fullmatch(str(item.get("job_evidence_sha256", ""))))
         and bool(REVISION.fullmatch(str(item.get("evidence_exporter_revision", ""))))
+        and bool(SHA256.fullmatch(str(item.get("evidence_capture_sha256", ""))))
         and bool(SHA256.fullmatch(str(item.get("runtime_code_sha256", ""))))
         and item.get("runtime_capture_method") in {"source-git-v1", "python-package-v1"}
         and bool(item.get("elsewhere_version"))
@@ -378,7 +415,7 @@ def validate_evidence(path: Path = EVIDENCE_PATH, now: datetime | None = None) -
         captured_journey(item)
         for item in journeys
     )
-    return [
+    checks = [
         result(
             "evidence schema",
             evidence_schema,
@@ -400,12 +437,22 @@ def validate_evidence(path: Path = EVIDENCE_PATH, now: datetime | None = None) -
         result("Fly and Tigris lifecycle proof", fly_proof, "Fly compute and Tigris source/result artifacts completed transport, result recovery, and verified cleanup" if fly_proof else "no complete Fly compute plus Tigris source-and-result artifact lifecycle proof"),
         result("stranger journey", stranger_journey, "an external participant captured all six steps linked to a verified run" if stranger_journey else "no external participant has a captured install-to-cleanup journey linked to verified run evidence"),
     ]
+    if gate == "maturity":
+        return checks
+    maturity_checks = {
+        "dogfood run count",
+        "dogfood participants",
+        "dogfood platforms",
+        "provider neutrality proof",
+        "failure recovery proof",
+    }
+    return [item for item in checks if item["name"] not in maturity_checks]
 
 
 def live_proof_revision_check(
     path: Path = EVIDENCE_PATH, root: Path = ROOT
 ) -> dict[str, Any]:
-    """Require a full Fly/Tigris proof with no later runtime-code changes."""
+    """Require a full Fly/Tigris proof from the current runtime and proof code."""
     try:
         evidence = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as error:
@@ -438,18 +485,57 @@ def live_proof_revision_check(
     for item in ordered:
         runtime_hash = str(item["runtime_code_sha256"])
         revision = str(item.get("runtime_revision") or "")
+        exporter_revision = str(item.get("evidence_exporter_revision") or "")
+        capture_hash = str(item.get("evidence_capture_sha256") or "")
+        if runtime_hash != current_runtime_hash:
+            label = revision[:12] if REVISION.fullmatch(revision) else runtime_hash[:12]
+            reasons.append(f"runtime code differs from proof {label}")
+            continue
+        if not REVISION.fullmatch(exporter_revision):
+            reasons.append("proof has no immutable exporter revision")
+            continue
+        if not SHA256.fullmatch(capture_hash):
+            reasons.append("proof has no immutable evidence-capture fingerprint")
+            continue
+        if capture_hash != evidence_capture_sha256(root):
+            reasons.append(
+                f"evidence capture code differs from proof {exporter_revision[:12]}"
+            )
+            continue
+        exporter_exists = run(
+            ["git", "cat-file", "-e", f"{exporter_revision}^{{commit}}"], root
+        )
+        if exporter_exists.returncode:
+            reasons.append(
+                f"exporter revision {exporter_revision[:12]} is not in this repository"
+            )
+            continue
+        exporter_is_ancestor = run(
+            ["git", "merge-base", "--is-ancestor", exporter_revision, "HEAD"], root
+        )
+        if exporter_is_ancestor.returncode:
+            reasons.append(
+                f"exporter revision {exporter_revision[:12]} is not an ancestor of HEAD"
+            )
+            continue
+        revision_capture_hash = evidence_capture_sha256_at_revision(
+            exporter_revision, root
+        )
+        if revision_capture_hash != capture_hash:
+            reasons.append(
+                f"evidence capture fingerprint is not from revision {exporter_revision[:12]}"
+            )
+            continue
         if runtime_hash == current_runtime_hash:
             return result(
                 "live proof runtime",
                 True,
                 (
-                    f"runtime code matches proven revision {revision[:12]}"
+                    f"runtime and evidence capture match proven revision {revision[:12]}"
                     if REVISION.fullmatch(revision)
-                    else f"runtime code matches proven package {runtime_hash[:12]}"
+                    else f"runtime and evidence capture match proven package {runtime_hash[:12]}"
                 ),
             )
-        label = revision[:12] if REVISION.fullmatch(revision) else runtime_hash[:12]
-        reasons.append(f"runtime code differs from proof {label}")
 
     return result("live proof runtime", False, "; ".join(reasons))
 
@@ -485,16 +571,28 @@ def history_check(root: Path = ROOT) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verify Elsewhere public-release readiness")
-    parser.add_argument("--release", action="store_true", help="include operational evidence and full Git history")
+    gate = parser.add_mutually_exclusive_group()
+    gate.add_argument(
+        "--release",
+        action="store_true",
+        help="include the public-alpha evidence, history, and anonymous journey",
+    )
+    gate.add_argument(
+        "--maturity",
+        action="store_true",
+        help="include the release gate plus multi-user operational maturity evidence",
+    )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
+    gate_name = "maturity" if args.maturity else "release" if args.release else "static"
     checks = static_checks()
-    if args.release:
-        checks.extend(validate_evidence())
+    if gate_name != "static":
+        checks.extend(validate_evidence(gate=gate_name))
         checks.append(live_proof_revision_check())
         checks.append(history_check())
         checks.extend(online_journey_checks())
     value = {
+        "gate": gate_name,
         "ready": all(item["passed"] for item in checks),
         "passed": sum(item["passed"] for item in checks),
         "total": len(checks),

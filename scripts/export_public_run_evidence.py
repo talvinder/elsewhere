@@ -28,6 +28,10 @@ from agent_capacity.cli import find_job  # noqa: E402
 
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 PARTICIPANT_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
+EVIDENCE_CAPTURE_PATHS = (
+    "scripts/export_public_run_evidence.py",
+    "scripts/v02_acceptance.py",
+)
 
 
 def _revision() -> str:
@@ -36,6 +40,17 @@ def _revision() -> str:
     )
     revision = completed.stdout.strip()
     return revision if completed.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", revision) else "unknown"
+
+
+def _evidence_capture_sha256() -> str:
+    digest = hashlib.sha256()
+    for relative in EVIDENCE_CAPTURE_PATHS:
+        path = ROOT / relative
+        digest.update(relative.encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def _artifact_absence(value: dict[str, Any] | None, label: str) -> str:
@@ -160,6 +175,7 @@ def build_record(job: dict[str, Any], participant_id: str, scenario: str) -> dic
         "job_evidence_sha256": proof_hash,
         "capture_method": "elsewhere-job-store-v1",
         "evidence_exporter_revision": _revision(),
+        "evidence_capture_sha256": _evidence_capture_sha256(),
         "runtime_revision": runtime_revision,
         "runtime_code_sha256": runtime_hash,
         "runtime_capture_method": runtime_method,

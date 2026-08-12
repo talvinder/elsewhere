@@ -48,6 +48,7 @@ class PublicEvidenceTests(unittest.TestCase):
         self.assertEqual(record["provider"], "fly")
         self.assertEqual(record["artifact_provider"], "tigris")
         self.assertEqual(record["capture_method"], "elsewhere-job-store-v1")
+        self.assertRegex(record["evidence_capture_sha256"], r"^[0-9a-f]{64}$")
         self.assertEqual(record["runtime_revision"], "c" * 40)
         self.assertTrue(record["source_transport_verified"])
         self.assertNotIn("private-job-id", encoded)
