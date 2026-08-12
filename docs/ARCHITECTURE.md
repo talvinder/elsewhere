@@ -62,12 +62,19 @@ source, region, resource, runtime, and estimated-cost boundary. Planning reports
 policy drift without mutating anything. Execution fails closed before packaging,
 launch, or fallback when the receipt does not match.
 
-## 6. Control plane
+## 6. Local control plane
 
 The queue joins persistent jobs with the shared lease pool. This makes standalone
 reservations visible instead of pretending every capacity claim belongs to a known
 job. The loopback control room and typed Codex MCP tools read the same state and use
 the same cancel, cleanup, and release operations as the CLI.
+
+This control plane is local to the originating device. The job ledger, provider
+identity, downloaded result cache, and cleanup state are stored under that device's
+private Elsewhere runtime directory. Provider execution does not need the device to
+remain awake, but status refresh, result recovery, and cleanup resume there. A shared
+or portable control plane for secure cross-device observation and takeover is outside
+the current alpha boundary.
 
 ## Execution flow
 
