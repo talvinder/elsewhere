@@ -348,6 +348,11 @@ class PublicReadinessTests(unittest.TestCase):
                 "/scripts/public_readiness.py @talvinder\n"
                 "/src/agent_capacity/artifact_transport.py @talvinder\n"
             )
+            (root / "README.md").write_text(
+                "You can close its lid during remote execution.\n"
+                "Observing or taking over a job from another device still requires "
+                "a shared control plane. Elsewhere does not claim that path yet.\n"
+            )
             with (
                 mock.patch.object(public_readiness, "tracked_files", return_value=[]),
                 mock.patch.object(public_readiness, "check_links", return_value=[]),
@@ -363,8 +368,47 @@ class PublicReadinessTests(unittest.TestCase):
 
         pinning = next(item for item in checks if item["name"] == "immutable CI dependencies")
         ownership = next(item for item in checks if item["name"] == "trust-boundary ownership")
+        continuation = next(
+            item for item in checks if item["name"] == "honest continuation boundary"
+        )
         self.assertTrue(pinning["passed"])
         self.assertTrue(ownership["passed"])
+        self.assertTrue(continuation["passed"])
+
+    def test_static_gate_rejects_an_implicit_cross_device_claim(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".github/workflows").mkdir(parents=True)
+            (root / ".github/workflows/ci.yml").write_text(
+                "jobs:\n  test:\n    steps:\n      - uses: actions/checkout@" + "a" * 40 + "\n"
+                "# macos-latest ubuntu-latest \"3.11\" \"3.12\" \"3.13\"\n"
+            )
+            (root / ".github/CODEOWNERS").write_text(
+                "/.github/ @talvinder\n"
+                "/scripts/check-no-internal.sh @talvinder\n"
+                "/scripts/public_readiness.py @talvinder\n"
+                "/src/agent_capacity/artifact_transport.py @talvinder\n"
+            )
+            (root / "README.md").write_text(
+                "Close the lid. Change devices. Your work keeps going.\n"
+            )
+            with (
+                mock.patch.object(public_readiness, "tracked_files", return_value=[]),
+                mock.patch.object(public_readiness, "check_links", return_value=[]),
+                mock.patch.object(
+                    public_readiness,
+                    "run",
+                    return_value=public_readiness.subprocess.CompletedProcess(
+                        [], 0, stdout="init doctor", stderr=""
+                    ),
+                ),
+            ):
+                checks = public_readiness.static_checks(root)
+
+        boundary = next(
+            item for item in checks if item["name"] == "honest continuation boundary"
+        )
+        self.assertFalse(boundary["passed"])
 
     def test_online_journey_requires_all_four_logged_out_surfaces(self):
         responses = [

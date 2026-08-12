@@ -246,6 +246,23 @@ def static_checks(root: Path = ROOT) -> list[dict[str, Any]]:
         commands_ready,
         "init and doctor are installed" if commands_ready else "init or doctor is missing",
     ))
+
+    readme_path = root / "README.md"
+    readme = readme_path.read_text() if readme_path.exists() else ""
+    continuation_ready = all(value in readme for value in (
+        "You can close its lid during remote execution",
+        "taking over a job from another device",
+        "Elsewhere does not claim that path yet",
+    ))
+    checks.append(result(
+        "honest continuation boundary",
+        continuation_ready,
+        (
+            "same-device lid-close proof and cross-device limitation are explicit"
+            if continuation_ready
+            else "README must distinguish same-device continuation from cross-device takeover"
+        ),
+    ))
     return checks
 
 

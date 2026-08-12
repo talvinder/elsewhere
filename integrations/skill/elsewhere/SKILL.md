@@ -75,6 +75,7 @@ common secret patterns, but pattern matching is not a complete secret scanner.
 
 ## Product test
 
-“Close the lid” is a functional promise. Do not claim a workflow is independent of
-the originating device unless execution, observation, cleanup, and result delivery
-can continue without it.
+“Close the lid” currently means provider execution continues while the originating
+device sleeps, then that device resumes status, result recovery, and cleanup from its
+local ledger. Do not claim cross-device observation or takeover until a shared or
+portable control plane proves that path.

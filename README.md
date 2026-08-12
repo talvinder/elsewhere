@@ -6,9 +6,9 @@ Start a build, agent task, spreadsheet transformation, or data job from the mach
 in front of you. Elsewhere decides whether it should run there or move to available
 compute somewhere else.
 
-Close the lid. Change devices. Go do something better.
+Close the lid. Go do something better.
 
-Your work keeps going.
+Remote work keeps going. Reopen this device to recover its result and clean up.
 
 ```sh
 elsewhere route \
@@ -122,9 +122,15 @@ boundary.
 `CTFL` is the developer version: **close the f\*\*king lid.**
 
 It is the test for every product decision. Once Elsewhere accepts a job, you should
-not be tied to the originating machine. Inputs must travel safely, execution must
-survive independently, progress must remain observable, and the result must find its
-way back.
+not need the originating machine to remain awake while the provider runs it. Inputs
+must travel safely, execution must survive independently, and the result must remain
+recoverable when that machine resumes.
+
+Today the job ledger, provider identity, result cache, and cleanup controls remain on
+the originating device. You can close its lid during remote execution, then reopen
+that same device to inspect status, recover the result, and verify cleanup. Observing
+or taking over a job from another device still requires a shared control plane or an
+explicit portable handoff; Elsewhere does not claim that path yet.
 
 Today the CLI proves that path for builds, tests, and agent workloads. The same
 contract can later carry spreadsheet transformations, document processing, media
@@ -336,9 +342,10 @@ bring their own infrastructure.
 ## Project status
 
 Elsewhere v0.2 is an alpha. Local placement, Fly and Azure dispatch, source transport,
-regional retry, durable job lifecycle, verified result return, idempotent cleanup,
-and the Codex/Claude integration work today. Additional providers and OpenSandbox
-integration are on the roadmap.
+regional retry, a same-device durable job lifecycle, verified result return,
+idempotent cleanup, and the Codex/Claude integration work today. Cross-device job
+observation and takeover require a future shared control plane or portable handoff.
+Additional providers and OpenSandbox integration are on the roadmap.
 
 Read the [Architecture](docs/ARCHITECTURE.md), [Security](docs/SECURITY.md),
 [Providers](docs/PROVIDERS.md), [Dogfood guide](docs/DOGFOOD.md), and
