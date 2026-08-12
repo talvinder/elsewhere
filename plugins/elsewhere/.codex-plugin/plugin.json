@@ -1,0 +1,37 @@
+{
+  "name": "elsewhere",
+  "version": "0.2.0a1",
+  "description": "Trust-aware workload routing and queue control for Codex.",
+  "author": {
+    "name": "Talvinder Singh",
+    "url": "https://talvinder.com"
+  },
+  "homepage": "https://github.com/talvinder/elsewhere",
+  "repository": "https://github.com/talvinder/elsewhere",
+  "license": "Apache-2.0",
+  "keywords": [
+    "workloads",
+    "cloud",
+    "fly",
+    "azure",
+    "capacity"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Elsewhere",
+    "shortDescription": "Run approved work here or elsewhere.",
+    "longDescription": "Inspect local capacity, review a typed trust boundary, dispatch approved work to Fly or Azure, and control every queued job or reservation from Codex.",
+    "developerName": "Talvinder Singh",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Show what Elsewhere is running and waiting on.",
+      "Plan this workload locally or in my cloud.",
+      "Check whether this source export is approved."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

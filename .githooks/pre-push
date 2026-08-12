@@ -1,0 +1,4 @@
+#!/bin/sh
+# Backstop before code leaves the machine: re-check every tracked file.
+# Enable with: sh scripts/install-hooks.sh
+exec "$(git rev-parse --show-toplevel)/scripts/check-no-internal.sh" --tracked

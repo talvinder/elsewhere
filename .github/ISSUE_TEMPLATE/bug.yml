@@ -1,0 +1,31 @@
+name: Bug report
+description: Report reproducible Elsewhere behavior
+title: "bug: "
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: What happened?
+      description: Include the command with credentials and signed URLs removed.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Elsewhere version or commit
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: Placement
+      options: [Local, Fly, Azure, Planning only]
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Sanitized output
+      description: Never include credentials, source URLs, or private source code.

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "elsewhere": {
+      "command": "elsewhere",
+      "args": [
+        "mcp-server"
+      ],
+      "cwd": "."
+    }
+  }
+}
+

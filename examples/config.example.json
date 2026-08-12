@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "routing": {
+    "default": "fly",
+    "fallbacks": [],
+    "workloads": {}
+  },
+  "providers": {
+    "fly": {
+      "enabled": true,
+      "app": "YOUR_RUNNER_APP",
+      "org": "YOUR_FLY_ORG",
+      "region": "bom",
+      "region_fallbacks": ["sin", "hkg"],
+      "cpu_kind": "shared"
+    },
+    "azure": {
+      "enabled": false,
+      "subscription": "",
+      "resource_group": "",
+      "location": "centralindia"
+    }
+  },
+  "artifact_store": {
+    "provider": "tigris",
+    "bucket": "YOUR_TIGRIS_BUCKET",
+    "endpoint": "https://t3.storage.dev",
+    "region": "auto",
+    "addressing_style": "virtual",
+    "presign_ttl_minutes": 60
+  },
+  "trust": {
+    "approved": false,
+    "inherit_global": false
+  }
+}

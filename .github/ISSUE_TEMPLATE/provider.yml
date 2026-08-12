@@ -1,0 +1,26 @@
+name: Provider request
+description: Propose a new place for Elsewhere to run work
+title: "provider: "
+labels: [provider]
+body:
+  - type: input
+    attributes:
+      label: Provider or runtime
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Why this destination?
+      description: Mention credits, regional access, workload support, or user demand.
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: Lifecycle support
+      options:
+        - label: Submit
+        - label: Status
+        - label: Logs
+        - label: Cancel
+        - label: Cleanup
+        - label: Input and result artifacts

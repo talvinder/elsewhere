@@ -1,0 +1,4 @@
+interface:
+  display_name: "Elsewhere"
+  short_description: "Start work here and let it run anywhere"
+  default_prompt: "Use $elsewhere to decide whether this work should run here or continue on configured cloud compute."

@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elsewhere-run"
+dynamic = ["version"]
+description = "Start work here. Let it run anywhere. Close the lid."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {file = "LICENSE"}
+authors = [{name = "Talvinder Singh"}]
+keywords = ["elsewhere", "workloads", "agents", "cloud", "fly", "azure"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Topic :: System :: Distributed Computing",
+]
+dependencies = ["boto3>=1.34,<2"]
+
+[project.optional-dependencies]
+dev = ["coverage==7.15.4", "ruff==0.16.2"]
+
+[project.scripts]
+elsewhere = "agent_capacity.cli:main"
+agent-capacity = "agent_capacity.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_capacity"]
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+  "src",
+  "tests",
+  "scripts",
+  "docs",
+  "examples",
+  "integrations",
+  "plugins",
+  "README.md",
+  "LICENSE",
+  "NOTICE",
+  "CHANGELOG.md",
+  "CONTRIBUTING.md",
+  "CODE_OF_CONDUCT.md",
+  "VERSION",
+  "pyproject.toml",
+]
+
+[tool.hatch.version]
+path = "src/agent_capacity/version.py"
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E9", "F", "I"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
+[tool.coverage.run]
+branch = true
+source = ["agent_capacity"]
+parallel = true
+relative_files = true
+patch = ["subprocess"]
+
+[tool.coverage.report]
+fail_under = 47
+show_missing = true
+skip_covered = true
