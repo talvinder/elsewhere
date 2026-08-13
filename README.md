@@ -22,9 +22,7 @@
 </p>
 
 > [!IMPORTANT]
-> Elsewhere v0.2 is a public alpha. The local-to-remote lifecycle is working and
-> tested across macOS and Linux, but the control plane remains on the originating
-> device. See [Project status](#project-status) for the exact boundary.
+> Elsewhere v0.2 is a public alpha. Jobs can move from macOS or Linux to approved cloud compute and continue while your laptop sleeps. For now, the device that started the job is also the only place that can check its status, recover results, or confirm cleanup. Cross-device control is not yet supported. See [Project status](#project-status) for the exact boundary.
 
 ## Your laptop is a starting point, not a limit
 
