@@ -1,14 +1,40 @@
-# Elsewhere
+<h1 align="center">Elsewhere</h1>
 
-**Your work doesn't need your laptop.**
+<p align="center"><strong>Start work here. Let it run anywhere. Close the lid.</strong></p>
+
+<p align="center">A provider-neutral workload router for builds, tests, agents, and data jobs.</p>
+
+<p align="center">
+  <a href="https://github.com/talvinder/elsewhere/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/talvinder/elsewhere/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/talvinder/elsewhere/actions/workflows/guard-internal-content.yml"><img alt="Public content guard" src="https://github.com/talvinder/elsewhere/actions/workflows/guard-internal-content.yml/badge.svg"></a>
+  <a href="https://github.com/talvinder/elsewhere/blob/main/pyproject.toml"><img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&amp;logoColor=white"></a>
+  <a href="https://github.com/talvinder/elsewhere/blob/main/LICENSE"><img alt="Apache 2.0" src="https://img.shields.io/badge/License-Apache%202.0-0B7285.svg"></a>
+  <a href="#project-status"><img alt="Public alpha" src="https://img.shields.io/badge/Status-Public%20alpha-D97706.svg"></a>
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="docs/SECURITY.md">Security</a> ·
+  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
+  <a href="docs/PROVIDER_CONTRACT.md">Provider contract</a> ·
+  <a href="docs/ROADMAP.md">Roadmap</a>
+</p>
+
+> [!IMPORTANT]
+> Elsewhere v0.2 is a public alpha. The local-to-remote lifecycle is working and
+> tested across macOS and Linux, but the control plane remains on the originating
+> device. See [Project status](#project-status) for the exact boundary.
+
+## Your laptop is a starting point, not a limit
 
 Start a build, agent task, spreadsheet transformation, or data job from the machine
-in front of you. Elsewhere decides whether it should run there or move to available
-compute somewhere else.
+in front of you. Elsewhere checks whether the work fits there. If it does not, it
+moves the inputs to compute you already trust, keeps the placement decision visible,
+and returns a verified result.
 
-Close the lid. Go do something better.
-
-Remote work keeps going. Reopen this device to recover its result and clean up.
+Remote work continues without the originating device staying awake. Reopen that
+device to inspect status, recover the result, and verify cleanup.
 
 ```sh
 elsewhere route \
@@ -16,7 +42,8 @@ elsewhere route \
   --image node:22-bookworm \
   --source-path . \
   --command "npm ci && npm run build" \
-  --result-path dist
+  --result-path dist \
+  --execute
 ```
 
 ```text
@@ -27,29 +54,28 @@ Job started · 4 GB · source URL expires in 60 minutes
 You can close this laptop.
 ```
 
-## Start here. Run anywhere.
+## How it works
 
-Your laptop should be a starting point, not a limit.
+| Step | Elsewhere does | You keep control of |
+| --- | --- | --- |
+| **1. Inspect** | Reads live local capacity and existing reservations. | The workload and its limits. |
+| **2. Place** | Explains whether the job should run locally or remotely. | Provider, region, budget, and source boundary. |
+| **3. Run** | Executes only after explicit `--execute` approval. | The ability to cancel and inspect logs. |
+| **4. Return** | Verifies result checksums and provider cleanup. | The recovered files and durable local receipt. |
 
 Elsewhere gives Codex, Claude, scripts, and eventually everyday applications one
-way to submit work. It checks the capacity available here. If the work fits, it runs
-locally under a shared safety limit. If it does not, Elsewhere moves the inputs to
-compute you already trust and brings back the status and result.
+consistent way to submit work. The execution layer can change without changing the
+caller contract.
 
 Trust is explicit rather than inferred from cloud credentials. A durable local
 approval receipt binds provider accounts, regions, source roots, private and
 uncommitted-file permission, CPU, memory, runtime, and estimated cost. Execution is
 denied when the request or configured destination drifts from that receipt.
 
-You choose the boundary:
-
-- **Run here** when the machine has room.
-- **Bring your own cloud** when you already have Fly, Azure, or another provider.
-
 The decision stays visible. So do cost, location, privacy boundaries, and cleanup.
 No mystery cloud. No surprise machine left running for the weekend.
 
-## Try it in two minutes
+## Quick start
 
 Elsewhere requires Python 3.11 or newer. With [`uv`](https://docs.astral.sh/uv/)
 installed, inspect your machine and run one harmless local command under Elsewhere's
@@ -69,11 +95,11 @@ You should see `elsewhere-ok` returned with the local capacity decision. This pa
 needs no cloud account, uploads nothing, and creates no billable resource.
 
 When you are ready to let work leave the laptop, continue to
-[Approve the boundary once](#approve-the-boundary-once) and the provider setup in
-[Install and connect a cloud](#install-and-connect-a-cloud). Remote routes stay dry
+[Approve the trust boundary](#approve-the-trust-boundary) and the provider setup in
+[Connect a cloud provider](#connect-a-cloud-provider). Remote routes stay dry
 until you explicitly add `--execute`.
 
-## See what is moving
+## Inspect jobs and capacity
 
 ```sh
 elsewhere queue
@@ -85,7 +111,7 @@ that was reserved outside the queue. The local dashboard adds safe cancel and
 release controls, recent history, and the reason each job is waiting. It binds only
 to loopback and uses a per-session control token.
 
-## Approve the boundary once
+## Approve the trust boundary
 
 ```sh
 elsewhere trust-approve \
@@ -106,7 +132,7 @@ The receipt is saved with mode `0600`. Dry plans show whether a request fits the
 contract. Remote execution rechecks it before packaging source, before launch, and
 before provider or region fallback.
 
-## Typed Codex integration
+## Codex integration
 
 The repository ships a Codex plugin under `plugins/elsewhere`, registered by the
 marketplace in `.agents/plugins/marketplace.json`. Its MCP tools
@@ -117,11 +143,9 @@ an arbitrary shell prefix permission to upload files.
 See [Trust and Codex](docs/TRUST.md) for installation and the exact enforcement
 boundary.
 
-## Close the lid
+## The close-the-lid contract
 
-`CTFL` is the developer version: **close the f\*\*king lid.**
-
-It is the test for every product decision. Once Elsewhere accepts a job, you should
+This is the test for every product decision. Once Elsewhere accepts a job, you should
 not need the originating machine to remain awake while the provider runs it. Inputs
 must travel safely, execution must survive independently, and the result must remain
 recoverable when that machine resumes.
@@ -166,7 +190,7 @@ elsewhere route \
   --execute
 ```
 
-## Install and connect a cloud
+## Connect a cloud provider
 
 The two-minute local path above works without a provider. To make remote placement
 possible, optionally install the macOS sampler and connect infrastructure you
@@ -222,7 +246,7 @@ The old `agent-capacity` command and `.agent-capacity.json` configuration remain
 supported during the rename. New installations should use `elsewhere` and
 `.elsewhere.json`.
 
-## Give agents somewhere else to work
+## Coordinate agent workloads
 
 Elsewhere includes a shared-capacity protocol for tools that create parallel workers.
 Codex and Claude reserve capacity before fan-out, then release it when work ends.
@@ -282,7 +306,7 @@ elsewhere acquire \
 elsewhere release TOKEN
 ```
 
-## Bring your own cloud
+## Provider model
 
 The open-source router does not force a destination. Fly and Azure are the first
 adapters. OpenSandbox is the preferred sandbox-runtime integration. OpenShell can
@@ -301,7 +325,7 @@ Elsewhere owns:
 Execution providers own the machinery underneath. Elsewhere wraps them instead of
 rebuilding them.
 
-## Source safety
+## Security model
 
 Moving work means crossing a data boundary. Elsewhere treats that as a product fact,
 not a footnote.
@@ -322,7 +346,7 @@ Remote result delivery expects a POSIX shell plus `timeout`, `tar`, `sha256sum`,
 Pattern-based exclusion cannot identify every secret embedded in an ordinary source
 file. Review sensitive workloads before sending them anywhere.
 
-## Proven path
+## Verified live path
 
 The first live run packaged an uncommitted local folder, excluded its `.env`, moved
 one manifest-tracked file through a short-lived Azure Blob URL, and launched it on an
