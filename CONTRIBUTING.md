@@ -20,7 +20,7 @@ automatically, so `sh scripts/quality.sh` and `sh scripts/coverage.sh` are equiv
 `scripts/quality.sh` is the contributor and CI source of truth. It checks import and
 unused-code hygiene, version consistency, compilation, the full test suite, the
 public-content boundary, documentation links, and the current release evidence.
-`scripts/coverage.sh` enforces a branch-coverage regression floor. The current 47%
+`scripts/coverage.sh` enforces a branch-coverage regression floor. The current 53%
 floor is a transparent baseline, not a claim of comprehensive coverage; new behavior
 should raise it, especially in the command and lifecycle paths.
 
