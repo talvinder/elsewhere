@@ -174,6 +174,7 @@ class ProviderContractTests(unittest.TestCase):
         upload_failure = subprocess.CalledProcessError(1, ["az", "storage", "blob", "upload"])
         with (
             patch("agent_capacity.artifact_transport.package_source") as package,
+            patch("agent_capacity.artifact_transport.shutil.which", return_value="/mock/bin/az"),
             patch(
                 "agent_capacity.artifact_transport.subprocess.run",
                 side_effect=[subprocess.CompletedProcess([], 0), upload_failure],
