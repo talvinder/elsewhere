@@ -74,6 +74,35 @@ class DeveloperJourneyTests(unittest.TestCase):
         with patch.object(cli, "find_job", return_value=None), self.assertRaises(ValueError):
             cli.wait_for_job("missing", 0)
 
+    def test_queue_only_suggests_placement_for_waiting_jobs_with_stable_event(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
+            "AGENT_CAPACITY_STATE": str(Path(directory) / "state.json"),
+            "AGENT_CAPACITY_JOBS": str(Path(directory) / "jobs.json"),
+            "AGENT_CAPACITY_MEMORY_LEVEL": "80", "AGENT_CAPACITY_TOTAL_MB": "18432",
+        }):
+            with cli.locked_jobs() as (data, _):
+                data["jobs"] = [
+                    {"id": name, "state": state, "provider": "local", "workload": "test", "owner": "test"}
+                    for name, state in [("waiting", "waiting_for_capacity"), ("active", "running"), ("done", "succeeded")]
+                ]
+            first = cli.queue_snapshot()["placement_opportunities"]
+            second = cli.queue_snapshot()["placement_opportunities"]
+            self.assertEqual(len(first), 1)
+            self.assertEqual(first[0]["job_id"], "waiting")
+            self.assertEqual(first[0]["event_key"], second[0]["event_key"])
+
+    def test_provider_failure_is_reported_without_cancelling_or_dispatching(self):
+        job = {"id": "test-job", "provider": "fly", "state": "running"}
+        with (
+            patch.object(cli, "find_job", return_value=job),
+            patch.object(cli, "refresh_remote_job", return_value=(job, {"returncode": 1})),
+            patch.object(cli, "execute_dispatch") as dispatch,
+        ):
+            observation = cli.wait_for_job("test-job", 0)
+            self.assertTrue(observation["needs_attention"])
+            self.assertEqual(observation["job"]["state"], "running")
+            dispatch.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
