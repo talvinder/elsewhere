@@ -167,6 +167,10 @@ class FlyProvider:
         return self._machine_command(job, "destroy")
 
     def classify_failure(self, stderr: str) -> str:
+        # A retired region cannot recover on retry in place, but another configured
+        # region can accept the job. The dispatcher rechecks trust on each fallback.
+        if re.search(r"region\s+[a-z0-9-]+\s+is deprecated and cannot have new resources provisioned", stderr, re.IGNORECASE):
+            return "retryable"
         retryable = ("no capacity available", "RegistryErrorResponse", "timeout", "temporarily unavailable")
         return "retryable" if any(value.lower() in stderr.lower() for value in retryable) else "terminal"
 

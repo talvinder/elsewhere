@@ -41,6 +41,17 @@ codex plugin add elsewhere@personal
 
 Start a new Codex task after installation so the MCP tools are discovered.
 
+For automatic placement assessment, merge the managed block from
+`integrations/AGENTS.fragment.md` into the agent's instructions, replacing any older
+`agent-capacity` block. Install the CLI skills from `integrations/skill` together
+with the plugin skill so they use the same placement-first workflow. Existing
+execution boundaries still apply; automatic assessment does not authorize uploads.
+
+After dispatch, `elsewhere_job_wait` accepts a job ID, an optional previous cursor,
+and a timeout of 0–30 seconds. It reports meaningful state changes without starting
+or deleting compute. Recover verified results and perform authorized cleanup before
+reporting completion. See [the acceptance contract](DEVELOPER_JOURNEY.md).
+
 ## Review and revoke
 
 ```sh

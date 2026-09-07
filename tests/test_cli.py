@@ -209,7 +209,8 @@ def main() -> None:
         )
         assert denied_result.returncode == 2
         assert actionable["denied_by"] == "insufficient_burst_headroom"
-        assert "cleanup --stale" in actionable["next_action"]
+        assert actionable["placement_advice"]["action"] == "assess_remote_placement"
+        assert actionable["placement_advice"]["automatic_dispatch"] is False
         assert actionable["privacy"].endswith("are hidden")
 
         quiet_guarded_sample = json.loads(host_metrics.read_text())
@@ -445,7 +446,7 @@ def main() -> None:
         tool_names = {item["name"] for item in responses[1]["result"]["tools"]}
         assert tool_names == {
             "elsewhere_trust_status", "elsewhere_queue", "elsewhere_plan",
-            "elsewhere_dispatch", "elsewhere_job_status", "elsewhere_job_control",
+            "elsewhere_dispatch", "elsewhere_job_status", "elsewhere_job_control", "elsewhere_job_wait",
         }
         assert "Work in motion" in dashboard_html("test-token")
         assert "test-token" in dashboard_html("test-token")

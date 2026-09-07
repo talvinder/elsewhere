@@ -38,6 +38,7 @@ from agent_capacity.artifact_transport import (
     prepare_result_artifact,
     prepare_source_artifact,
 )
+from agent_capacity.journey import completion_receipt, placement_advice
 from agent_capacity.models import (
     REMOTE_TERMINAL_STATES,
     should_accept_remote_transition,
@@ -130,7 +131,10 @@ def public_job_view(job: dict[str, Any]) -> dict[str, Any]:
         "started_at", "completed_at", "cleaned_at", "last_checked_at", "returncode",
         "result_paths", "result", "provider_absent", "provider_evidence", "transitions",
     )
-    return sanitize_persisted_value({key: job.get(key) for key in fields if key in job})
+    return sanitize_persisted_value({
+        **{key: job.get(key) for key in fields if key in job},
+        "receipt": completion_receipt(job),
+    })
 
 
 def public_provider_result(value: dict[str, Any]) -> dict[str, Any]:
@@ -1320,7 +1324,8 @@ def acquire(
                 "recommended_count": recommended,
                 "reason": f"{band['name']} local capacity: {band['reason']}",
                 "denied_by": admission_rule(workload, metrics, leases),
-                "next_action": "run `elsewhere cleanup --stale`, then retry; use `elsewhere queue` to inspect reservations",
+                "next_action": placement_advice(workload)["message"],
+                "placement_advice": placement_advice(workload),
                 "memory_consumers": workload_pressure(leases),
                 "privacy": "process arguments and environment values are hidden",
                 **payload(metrics, leases),
@@ -2044,6 +2049,7 @@ def run_job_action(job_id: str, action: str, discard_results: bool = False) -> i
             "job_id": job["id"], "action": action, "state": final_state,
             "compute": compute_result, "source_artifact": source_artifact,
             "result_artifact": result_artifact,
+            "receipt": completion_receipt(find_job(job["id"]) or current),
             "status_before_cleanup": public_provider_result(status_result),
         })
         return 0 if final_state == "cleaned" else 1
@@ -2134,6 +2140,12 @@ def queue_snapshot(history_limit: int = 20) -> dict[str, Any]:
             "remote_submitted": sum(job["state"] == "submitted" for job in active),
             "reservations": len(lease_rows),
         },
+        "placement_opportunities": [
+            {"job_id": job["id"], "owner": job["owner"],
+             "event_key": f"{job['id']}:assess_remote_placement",
+             **placement_advice(job["workload"])}
+            for job in active if job["state"] == "waiting_for_capacity"
+        ],
         "active_jobs": active,
         "history": history[:history_limit],
         "leases": lease_rows,
@@ -2379,6 +2391,22 @@ def mcp_tools() -> list[dict[str, Any]]:
             "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True},
         },
         {
+            "name": "elsewhere_job_wait",
+            "title": "Follow Elsewhere Work",
+            "description": "Wait up to 30 seconds for a meaningful job change. Retain the cursor, continue independent work, and follow through verified results and cleanup without a user reminder.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "job_id": {"type": "string"},
+                    "after_cursor": {"type": "string"},
+                    "timeout_seconds": {"type": "integer", "minimum": 0, "maximum": 30},
+                },
+                "required": ["job_id"],
+                "additionalProperties": False,
+            },
+            "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        },
+        {
             "name": "elsewhere_job_status",
             "title": "Inspect Elsewhere Job",
             "description": "Read status or retained logs for one local or remote job without changing it.",
@@ -2434,11 +2462,47 @@ def dispatch_arguments(arguments: dict[str, Any]) -> tuple[dict[str, Any], dict[
     )
 
 
+def wait_for_job(job_id: str, timeout_seconds: int = 30, after_cursor: str = "") -> dict[str, Any]:
+    """Wait briefly for a meaningful change; never dispatch or delete resources."""
+    if not 0 <= timeout_seconds <= 30:
+        raise ValueError("timeout_seconds must be between 0 and 30")
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        job = find_job(job_id)
+        if job is None:
+            raise ValueError("unknown job")
+        if job.get("provider") != "local" and job.get("state") not in {"cleaned", "cleanup_failed"}:
+            job, provider_result = refresh_remote_job(job)
+            if provider_result.get("returncode"):
+                return {"job_id": job_id, "needs_attention": True, "reason": "provider status unavailable", "job": public_job_view(job)}
+        receipt = completion_receipt(job)
+        cursor = hashlib.sha256(json.dumps(receipt, sort_keys=True).encode()).hexdigest()
+        changed = cursor != after_cursor
+        terminal = job.get("state") in TERMINAL_JOB_STATES
+        if changed or terminal or time.monotonic() >= deadline:
+            return {
+                "job_id": job_id, "cursor": cursor, "changed": changed,
+                "terminal": terminal, "job": public_job_view(job),
+                "next_action": (
+                    "inspect the local exit code and retained logs"
+                    if terminal and job.get("provider") == "local"
+                    else
+                    "recover results, inspect the exit code, then verify cleanup"
+                    if terminal and job.get("state") != "cleaned"
+                    else "continue independent work and wait again" if not terminal
+                    else "report the verified receipt"
+                ),
+            }
+        time.sleep(min(2, max(0, deadline - time.monotonic())))
+
+
 def mcp_call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     if name == "elsewhere_trust_status":
         return trust_status()
     if name == "elsewhere_queue":
         return queue_snapshot(int(arguments.get("history_limit", 20)))
+    if name == "elsewhere_job_wait":
+        return wait_for_job(arguments["job_id"], int(arguments.get("timeout_seconds", 30)), arguments.get("after_cursor", ""))
     if name == "elsewhere_plan":
         decision = local_route_decision(arguments["workload"])
         job, plan = dispatch_arguments(arguments)
@@ -3086,6 +3150,7 @@ def main() -> int:
                 print_json({
                     "executed": False,
                     "queued": True,
+                    "placement_advice": placement_advice(args.workload),
                     "reason": "local capacity is unavailable; the request will start automatically when admitted",
                     "job": public_local_job(job),
                     "status_command": f"elsewhere job-status {job['id']}",

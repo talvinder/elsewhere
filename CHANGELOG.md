@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- Assess remote placement before portable verification and when local capacity
+  denies work; expose queued placement opportunities with stable event identities.
+- Follow job changes through a bounded MCP wait and return completion receipts
+  with transported-source fingerprints, results, estimates, and cleanup status.
+- Try approved fallback regions when Fly rejects new resources in a retired region.
+
 - Add guided `elsewhere init` and read-only `elsewhere doctor` commands so a new
   user can configure Fly/Tigris or Azure and see the exact remaining setup step.
 - Add Fly-native Tigris source and result transport with endpoint pinning,

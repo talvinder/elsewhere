@@ -138,6 +138,7 @@ def prepare_source(
         "expires_at": (datetime.now(UTC) + timedelta(seconds=expires_in)).isoformat(),
         "manifest": {
             "file_count": len(manifest["files"]),
+            "content_sha256": manifest.get("content_sha256"),
             "skipped_count": len(manifest["skipped"]),
             "total_bytes": manifest["total_bytes"],
             "skipped": manifest["skipped"],
