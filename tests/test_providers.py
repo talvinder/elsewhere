@@ -595,6 +595,10 @@ class PersistedLifecycleTests(unittest.TestCase):
     def test_failure_classification_is_provider_specific_and_normalized(self):
         self.assertEqual(get_provider("fly").classify_failure("no capacity available"), "retryable")
         self.assertEqual(get_provider("fly").classify_failure("permission denied"), "terminal")
+        self.assertEqual(get_provider("fly").classify_failure(
+            "Region xyz is deprecated and cannot have new resources provisioned."
+        ), "retryable")
+        self.assertEqual(get_provider("fly").classify_failure("deprecated API; permission denied"), "terminal")
         self.assertEqual(get_provider("azure").classify_failure("AllocationFailed"), "retryable")
         self.assertEqual(get_provider("azure").classify_failure("RegistryErrorResponse; retry later"), "retryable")
         self.assertEqual(get_provider("azure").classify_failure("InvalidImage"), "terminal")
