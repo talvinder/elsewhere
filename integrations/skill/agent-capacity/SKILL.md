@@ -53,6 +53,19 @@ past its lease:
 elsewhere renew TOKEN --ttl 2700
 ```
 
+## Placement comes before local waiting
+
+For portable builds and substantial tests, use the dry `route` decision below
+before choosing local `run`, even when the user has not mentioned Elsewhere.
+A capacity denial or queued job requires a remote assessment before settling for
+a wait. Explain host-specific work that must remain local. Never duplicate a
+queued job: verify cancellation of your own superseded job before dispatching.
+
+Follow remote jobs without a user reminder: recover and inspect verified results,
+fix failures within scope, preserve returned files, and verify authorized cleanup.
+Report source fingerprint, outcome, duration, resources, estimated cost, and cleanup.
+Reuse an existing matching execution approval; never silently broaden its boundary.
+
 ## Wrap a single heavy command
 
 Prefer `run` when one command owns the whole workload. It releases automatically:

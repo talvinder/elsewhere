@@ -1,6 +1,6 @@
 ---
 name: elsewhere
-description: Keep work moving beyond the current device. Use before parallel or memory-heavy work, when choosing local or remote execution, or when managing a workload sent to Fly, Azure, or another provider.
+description: Assess placement before portable builds, substantial tests, and capacity waits; manage local or approved cloud execution through verified results and cleanup.
 ---
 
 # Elsewhere
@@ -10,7 +10,13 @@ else. The user should not need to choose infrastructure unless they want to.
 
 ## Route work
 
-Prefer a dry placement decision first:
+Before a portable build or substantial test run, make a dry placement decision even
+when the developer has not mentioned Elsewhere. A denied reservation or local queue
+is also a trigger to assess remote execution before waiting. Explain host-dependent
+work that must stay local. Do not duplicate a queued job: verify cancellation of your
+own superseded job before starting its replacement.
+
+Make a dry placement decision first:
 
 ```sh
 elsewhere route \
@@ -55,6 +61,16 @@ when capacity returns. Use `--no-queue` only for an explicit fail-fast workflow.
 
 Never split a request to bypass a denial. Reduce concurrency, run sequentially, or
 route the workload remotely.
+
+## Complete the developer task
+
+Retain every submitted job ID, continue independent work, and check status without
+a user reminder. Recover verified results, inspect failures, and fix and verify the
+change within the original scope. Clean up completed task-owned remote resources
+after preserving results when lifecycle cleanup is authorized. Report the source
+fingerprint, exit code, result location, duration, estimated cost, and cleanup.
+Do not repeat unchanged queue suggestions; retain their event_key. An existing
+matching execution approval does not need to be requested again.
 
 ## Manage remote work
 

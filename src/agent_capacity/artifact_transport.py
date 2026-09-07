@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from agent_capacity.journey import source_fingerprint
 from agent_capacity.s3_artifacts import (
     cleanup as cleanup_s3_artifact,
     download as download_s3_artifact,
@@ -133,6 +134,7 @@ def package_source(source_path: str, job_id: str) -> tuple[Path, dict[str, Any]]
                 "created_at": datetime.now(UTC).isoformat(),
                 "source_name": root.name,
                 "files": files,
+                "content_sha256": source_fingerprint(files),
                 "skipped": skipped,
                 "total_bytes": total_bytes,
             }
@@ -215,6 +217,7 @@ def prepare_source_artifact(job: dict[str, Any], config: dict[str, Any]) -> dict
         "expires_at": expiry.isoformat(),
         "manifest": {
             "file_count": len(manifest["files"]),
+            "content_sha256": manifest["content_sha256"],
             "skipped_count": len(manifest["skipped"]),
             "total_bytes": manifest["total_bytes"],
             "skipped": manifest["skipped"],
