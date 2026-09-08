@@ -141,6 +141,13 @@ an arbitrary shell prefix permission to upload files.
 See [Trust and Codex](docs/TRUST.md) for installation and the exact enforcement
 boundary.
 
+## Herdr integration
+
+The [Herdr plugin](plugins/herdr/README.md) adds a workload pane to an existing
+Herdr workspace. Review a command and its placement, explicitly start it, then
+return to saved remote jobs for result recovery and verified cleanup. It uses
+the installed Elsewhere CLI and the same capacity and trust rules.
+
 ## The close-the-lid contract
 
 This is the test for every product decision. Once Elsewhere accepts a job, you should
