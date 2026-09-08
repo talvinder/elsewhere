@@ -44,7 +44,7 @@ class HerdrPluginTests(unittest.TestCase):
             self.assertNotIn("--execute", entry["command"])
 
     def test_project_comes_from_focused_pane_not_plugin_cwd(self):
-        self.assertEqual(bridge.context_source(), self.source)
+        self.assertEqual(bridge.context_source(), self.source.resolve())
         with patch.dict(os.environ, {"HERDR_PLUGIN_CONTEXT_JSON": "{}"}):
             with self.assertRaises(bridge.WorkflowError):
                 bridge.context_source()
@@ -54,7 +54,7 @@ class HerdrPluginTests(unittest.TestCase):
     def test_explicit_source_wins_and_missing_context_fails_closed(self):
         other = Path(self.temp.name) / "other"
         other.mkdir()
-        self.assertEqual(bridge.context_source(str(other)), other)
+        self.assertEqual(bridge.context_source(str(other)), other.resolve())
         with self.assertRaises(bridge.WorkflowError):
             bridge.context_source("/")
 
@@ -139,6 +139,18 @@ class HerdrPluginTests(unittest.TestCase):
             with self.assertRaises(bridge.WorkflowError):
                 bridge.cleanup(self.source, record)
             self.assertEqual(record["state"], "cleanup_failed")
+
+    def test_cleaned_receipt_does_not_requery_deleted_transport(self):
+        record = {"job_id": "a" * 32, "state": "cleaned", "receipt": {"cleanup_verified": True}}
+        with patch.object(bridge, "call") as call:
+            bridge.inspect_record(self.source, record)
+            call.assert_not_called()
+
+    def test_follow_stops_at_deadline_without_cancelling_or_cleaning(self):
+        record = {"job_id": "a" * 32, "state": "running"}
+        with patch.object(bridge, "inspect_record"), patch.object(bridge, "call") as call:
+            bridge.follow_record(self.source, record, timeout_seconds=0)
+            call.assert_not_called()
 
     def test_records_are_scoped_to_project(self):
         other = Path(self.temp.name) / "other"

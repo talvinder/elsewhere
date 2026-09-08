@@ -50,7 +50,10 @@ as a command automatically.
    infer one from the command.
 3. Review the location and, for remote work, the existing trust decision. Type
    `run` to start. Enter alone leaves the command unstarted.
-4. Inspect the returned output or the saved remote job. Refreshing a finished
+4. The pane follows the submitted remote job automatically for its declared
+   runtime plus one minute. It reports state changes and retains unfinished work
+   when that monitoring window ends. Inspect the returned output or reopen the
+   saved job. Refreshing a finished
    remote job lets Elsewhere recover and verify its results. Cleanup is offered
    only after verified recovery, including when the workload failed.
 

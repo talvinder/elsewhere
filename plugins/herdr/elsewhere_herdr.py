@@ -167,26 +167,51 @@ def execute(spec, plan):
     return code, record
 
 
-def inspect_record(source, record):
+def inspect_record(source, record, *, quiet=False):
     job_id = record.get("job_id")
     if not job_id:
         say(f"{record['state']} | Exit code: {record.get('exit_code')}")
         return record
     if not re.fullmatch(r"[a-f0-9]{32}", job_id):
         raise WorkflowError("Invalid job identifier in saved record.")
-    code, value = call(["job-status", job_id], source)
-    if code:
-        raise WorkflowError(f"Status unavailable. Retained job {job_id}; retry later.")
-    job = value.get("job", {})
-    receipt = job.get("receipt", {})
-    record.update(state=job.get("state", "unknown"), receipt=receipt)
-    save_record(source, record)
+    receipt = record.get("receipt", {})
+    # Verified cleanup is final. Re-querying a deleted result transport cannot
+    # improve that evidence, and older runtimes may overwrite it on collection.
+    if receipt.get("cleanup_verified") is not True:
+        code, value = call(["job-status", job_id], source)
+        if code:
+            raise WorkflowError(f"Status unavailable. Retained job {job_id}; retry later.")
+        job = value.get("job", {})
+        receipt = job.get("receipt", {})
+        record.update(state=job.get("state", "unknown"), receipt=receipt)
+        save_record(source, record)
+    if quiet:
+        return record
     say(f"Job: {job_id} | State: {record['state']}")
     if receipt:
         say(f"Exit code: {receipt.get('exit_code')} | Results verified: {receipt.get('result_verified')}\n"
             f"Result folder: {receipt.get('result_path')}\nSource fingerprint: {receipt.get('source_fingerprint')}\n"
             f"Cleanup verified: {receipt.get('cleanup_verified')}")
     return record
+
+
+def follow_record(source, record, timeout_seconds=900):
+    """Watch without repeated notices; never wait forever on a lost worker."""
+    deadline = time.monotonic() + timeout_seconds
+    previous = None
+    say("Following this job. Ctrl+C closes the pane; reopen saved jobs to continue.")
+    while True:
+        inspect_record(source, record, quiet=True)
+        current = json.dumps({"state": record["state"], "receipt": record.get("receipt")}, sort_keys=True)
+        if current != previous:
+            say(f"Job {record['job_id']}: {record['state']}")
+            previous = current
+        if record["state"] in TERMINAL:
+            return
+        if time.monotonic() >= deadline:
+            say("The monitoring window ended. The job is saved; refresh its status or return later.")
+            return
+        time.sleep(min(5, max(0, deadline - time.monotonic())))
 
 
 def cleanup(source, record):
@@ -257,6 +282,7 @@ def console(source):
                 if input("Type run to execute this command, or Enter to leave it unstarted: ") == "run":
                     _, record = execute(spec, plan)
                     if record.get("job_id"):
+                        follow_record(source, record, int(spec.get("max_runtime_seconds", 900)) + 60)
                         review_record(source, record)
         except (WorkflowError, ValueError, OSError, subprocess.TimeoutExpired) as error:
             say(f"Could not continue: {error}")
