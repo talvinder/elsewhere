@@ -1880,9 +1880,16 @@ def refresh_remote_job(job: dict[str, Any]) -> tuple[dict[str, Any], dict[str, A
     observation = provider.parse_status(result.stdout, result.stderr, result.returncode, job)
     changes: dict[str, Any] = {
         "last_checked_at": int(time.time()),
-        "provider_absent": observation.absent,
         "provider_evidence": sanitize_persisted_value(observation.evidence),
     }
+    # A failed probe is not evidence that the machine reappeared. Record absence
+    # only from an authoritative observation, and never withdraw the absence that
+    # a verified cleanup already established, or the completion receipt would
+    # report verified cleanup as unverified after one network timeout.
+    settled_absent = job.get("provider_absent") is True and job.get("state") in TERMINAL_JOB_STATES
+    authoritative = observation.absent or observation.state is not None or result.returncode == 0
+    if authoritative and not (settled_absent and not observation.absent):
+        changes["provider_absent"] = observation.absent
     if observation.provider_id:
         changes["provider_id"] = observation.provider_id
     if observation.state and should_accept_remote_transition(job.get("state"), observation.state):
@@ -1992,11 +1999,17 @@ def run_job_action(job_id: str, action: str, discard_results: bool = False) -> i
         cancelled = False
         if result.returncode == 0:
             cancelled, verification = verify_remote_absence(current)
-            update_job(
-                job["id"], state="cancelled" if cancelled else "cancelling",
-                completed_at=int(time.time()) if cancelled else None,
-                provider_absent=cancelled, cancel_verification=verification,
-            )
+            # update_job refuses a rejected state change but still applies every
+            # other key, so writing None here would erase the completion time of
+            # a job that already finished and leave elapsed_seconds null forever.
+            cancel_changes: dict[str, Any] = {
+                "state": "cancelled" if cancelled else "cancelling",
+                "cancel_verification": verification,
+            }
+            if cancelled:
+                cancel_changes["completed_at"] = int(time.time())
+                cancel_changes["provider_absent"] = True
+            update_job(job["id"], **cancel_changes)
         print_json({
             "job_id": job["id"], "action": action, "returncode": result.returncode,
             "provider_output": "suppressed",
@@ -2436,7 +2449,9 @@ def mcp_tools() -> list[dict[str, Any]]:
                 "required": ["job_id"],
                 "additionalProperties": False,
             },
-            "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+            # Waiting reconciles provider state, so it persists status, evidence and
+            # transitions and may collect results. It is not read-only or idempotent.
+            "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True},
         },
         {
             "name": "elsewhere_job_status",
