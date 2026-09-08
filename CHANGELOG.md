@@ -4,6 +4,9 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- Add a Herdr workload pane with explicit execution, project-scoped job receipts,
+  and cleanup gated on verified result recovery.
+
 - Assess remote placement before portable verification and when local capacity
   denies work; expose queued placement opportunities with stable event identities.
 - Follow job changes through a bounded MCP wait and return completion receipts

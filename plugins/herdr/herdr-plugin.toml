@@ -1,0 +1,18 @@
+id = "elsewhere.workloads"
+name = "Elsewhere"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Review where a workload will run, execute it with Elsewhere, and recover its results."
+platforms = ["macos", "linux"]
+
+[[actions]]
+id = "open"
+title = "Run work with Elsewhere"
+contexts = ["workspace", "pane"]
+command = ["python3", "elsewhere_herdr.py", "open"]
+
+[[panes]]
+id = "workloads"
+title = "Elsewhere"
+placement = "overlay"
+command = ["python3", "elsewhere_herdr.py", "console"]

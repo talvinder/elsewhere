@@ -10,9 +10,9 @@ PYTHON_BIN=$("$PYTHON" -c 'import pathlib, sys; print(pathlib.Path(sys.executabl
 PATH="$PYTHON_BIN:$PATH"
 export PATH
 
-"$PYTHON" -m ruff check src scripts tests
+"$PYTHON" -m ruff check src scripts tests plugins/herdr
 "$PYTHON" scripts/sync_version.py --check
-"$PYTHON" -m compileall -q src tests scripts
+"$PYTHON" -m compileall -q src tests scripts plugins/herdr
 "$PYTHON" tests/test_cli.py
 PYTHONPATH=src "$PYTHON" -m unittest discover -s tests -p 'test_*.py'
 sh scripts/check-no-internal.sh --tracked
