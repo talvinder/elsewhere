@@ -9,11 +9,17 @@ jobs to inspect results and verify cleanup.
 
 - Herdr 0.9.0 or newer on macOS or Linux.
 - Python 3.11 or newer as `python3`.
-- An installed `elsewhere` CLI on PATH (`pipx install elsewhere-run`), or an
+- An installed `elsewhere` CLI on PATH, or an
   absolute `ELSEWHERE_BIN` pointing at your chosen installation.
 - For remote work, an Elsewhere provider configuration and a matching trust
   approval on the machine running the Herdr server. Start with
   `elsewhere doctor` and `elsewhere trust-status` in your project.
+
+Install Elsewhere from its public repository using `uv`:
+
+```sh
+uv tool install git+https://github.com/talvinder/elsewhere.git
+```
 
 This plugin delegates placement, source exclusions, export approval, result
 verification, and resource cleanup to Elsewhere. It does not create a second

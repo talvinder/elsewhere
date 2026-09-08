@@ -47,7 +47,7 @@ def executable():
     binary = os.environ.get("ELSEWHERE_BIN", "elsewhere")
     found = shutil.which(binary)
     if not found:
-        raise WorkflowError("Elsewhere is missing. Install elsewhere-run with Python 3.11+ and put elsewhere on PATH (or set ELSEWHERE_BIN).")
+        raise WorkflowError("Elsewhere is missing. Run: uv tool install git+https://github.com/talvinder/elsewhere.git; then put elsewhere on PATH (or set ELSEWHERE_BIN).")
     return found
 
 
