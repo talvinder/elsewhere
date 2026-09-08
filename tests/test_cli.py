@@ -224,6 +224,61 @@ def main() -> None:
         assert quiet_guarded["capacity_band"]["name"] == "guarded"
         assert quiet_guarded["recommendations"]["test"] >= 1
 
+        # A quiet machine at one third free memory has room for one declared
+        # build. Free-memory percentage alone cannot tell this apart from the
+        # swap-exhausted machine above, which has MORE free memory and must
+        # still be refused; retained swap and page-out activity can.
+        quiet_build_sample = json.loads(host_metrics.read_text())
+        quiet_build_sample.update({
+            "sampled_at": time.time(), "memory_level": 34,
+            "swap_used_mb": 60, "swap_free_mb": 8132,
+            "swap_utilization_percent": 0.7,
+            "pageouts_per_second": 0, "swapouts_per_second": 0,
+        })
+        host_metrics.write_text(json.dumps(quiet_build_sample))
+        _, quiet_build = call(state, "status", level=34, host_metrics=host_metrics)
+        assert quiet_build["capacity_band"]["name"] == "guarded"
+        assert quiet_build["budget"]["reserve_mb"] == 2048
+        assert quiet_build["recommendations"]["build"] == 1
+        allowed_result, admitted = call(
+            state, "acquire", "--workload", "build", "--owner", "test:quiet-build",
+            level=34, host_metrics=host_metrics,
+        )
+        assert allowed_result.returncode == 0
+        assert admitted["allowed"] is True
+        call(state, "release", admitted["token"], level=34, host_metrics=host_metrics)
+
+        # Identical headroom, but the machine is actively paging out. The burst
+        # must stay refused, and for the burst reason rather than a budget miss.
+        paging_sample = json.loads(host_metrics.read_text())
+        paging_sample.update({
+            "sampled_at": time.time(), "memory_level": 34,
+            "swap_used_mb": 60, "swap_free_mb": 8132,
+            "swap_utilization_percent": 0.7,
+            "pageouts_per_second": 40, "swapouts_per_second": 0,
+        })
+        host_metrics.write_text(json.dumps(paging_sample))
+        _, paging = call(state, "status", level=34, host_metrics=host_metrics)
+        assert paging["recommendations"]["build"] == 0
+        paging_result, paging_denied = call(
+            state, "acquire", "--workload", "build", "--owner", "test:paging",
+            level=34, host_metrics=host_metrics, check=False,
+        )
+        assert paging_result.returncode == 2
+        assert paging_denied["denied_by"] == "insufficient_burst_headroom"
+
+        # An unknown swap signal must never unlock a burst: a missing measurement
+        # is not evidence of a quiet machine.
+        unknown_swap_sample = json.loads(host_metrics.read_text())
+        unknown_swap_sample.update({
+            "sampled_at": time.time(), "memory_level": 34, "swap_known": False,
+            "pageouts_per_second": 0, "swapouts_per_second": 0,
+        })
+        host_metrics.write_text(json.dumps(unknown_swap_sample))
+        _, unknown_swap = call(state, "status", level=34, host_metrics=host_metrics)
+        assert unknown_swap["budget"]["reserve_mb"] == 5120
+        assert unknown_swap["recommendations"]["build"] == 0
+
         retained_sample = json.loads(host_metrics.read_text())
         retained_sample.update({
             "sampled_at": time.time(), "memory_level": 70,

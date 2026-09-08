@@ -1201,6 +1201,27 @@ def capacity_band(metrics: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def swap_pressure(metrics: dict[str, Any]) -> str:
+    """Classify how hard the machine is leaning on swap.
+
+    Free-memory percentage alone cannot separate a quiet machine that simply has
+    a smaller working set from one that is only staying alive by paging: both can
+    report the same headroom. Retained swap plus page-out activity can. Unknown
+    swap is never treated as quiet, so a missing signal cannot unlock a burst.
+    """
+    if not metrics.get("swap_known"):
+        return "elevated"
+    percent = float(metrics.get("swap_utilization_percent", 0))
+    band = capacity_band(metrics)
+    activity_mb = float(band["swap_activity_mb_per_second"])
+    stall = float(band["memory_stall_percent"])
+    if percent >= 75 or activity_mb >= 0.5 or stall >= 1:
+        return "stressed"
+    if percent >= 50 or activity_mb >= 0.1:
+        return "elevated"
+    return "quiet"
+
+
 def available_budget(metrics: dict[str, Any], leases: list[dict[str, Any]]) -> dict[str, int]:
     total_mb = metrics["total_mb"]
     level = int(metrics["memory_level"])
@@ -1214,6 +1235,12 @@ def available_budget(metrics: dict[str, Any], leases: list[dict[str, Any]]) -> d
         reserve_mb = 5120
     else:
         reserve_mb = 6144
+    # A fixed 4-6 GB floor turns an ordinary 16-24 GB machine into a no-build
+    # zone while its RAM is genuinely free. When swap is quiet, keep a real OS
+    # floor and let one declared heavy job use the rest; the budget below still
+    # has to fit the whole workload.
+    if swap_pressure(metrics) == "quiet":
+        reserve_mb = min(reserve_mb, 2048)
     reserve_mb = min(reserve_mb, max(0, total_mb - 1024))
     headroom_mb = int(total_mb * metrics["memory_level"] / 100)
     leased_mb = sum(int(lease.get("reserved_mb", 0)) for lease in leases)
@@ -1254,7 +1281,9 @@ def recommend_count(workload: str, maximum: int, metrics: dict[str, Any], leases
     if band == "constrained" and workload not in {"service", "light"}:
         return 0
     if band == "guarded" and definition["bursty"]:
-        if int(metrics["memory_level"]) < 45:
+        # Only refuse the burst when low headroom coincides with swap stress.
+        # Quiet, genuinely available memory is usable.
+        if int(metrics["memory_level"]) < 45 and swap_pressure(metrics) != "quiet":
             return 0
 
     counts, total_units, heavy_units = active_counts(leases)
@@ -1292,7 +1321,10 @@ def admission_rule(workload: str, metrics: dict[str, Any], leases: list[dict[str
         return "critical_memory_pressure"
     if band == "constrained" and workload not in {"service", "light"}:
         return "active_swap_or_low_headroom"
-    if band == "guarded" and WORKLOADS[workload]["bursty"] and int(metrics["memory_level"]) < 45:
+    if (
+        band == "guarded" and WORKLOADS[workload]["bursty"]
+        and int(metrics["memory_level"]) < 45 and swap_pressure(metrics) != "quiet"
+    ):
         return "insufficient_burst_headroom"
     if available_budget(metrics, leases)["available_mb"] < int(WORKLOADS[workload]["mb"]):
         return "insufficient_memory_budget"
