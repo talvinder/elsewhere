@@ -136,6 +136,7 @@ class UnavailableSensingTests(unittest.TestCase):
             import os
             os.environ.pop("AGENT_CAPACITY_TOTAL_MB", None)
             os.environ.pop("AGENT_CAPACITY_MEMORY_LEVEL", None)
+            os.environ.pop("AGENT_CAPACITY_HOST_METRICS", None)
             m = system_metrics()
         self.assertEqual(m["telemetry_source"], "proc")
         self.assertEqual(m["total_mb"], 16000)
@@ -155,11 +156,30 @@ class UnavailableSensingTests(unittest.TestCase):
         self.assertEqual(m["swap_utilization_percent"], 90.8)
         self.assertEqual(m["swap_used_mb"], 7440)
 
+    def test_macos_automatically_consumes_its_installed_sampler(self):
+        import os
+        sample = {
+            "total_mb": 18432, "memory_level": 43, "swap_known": True,
+            "swap_total_mb": 7168, "swap_used_mb": 5725,
+            "swap_free_mb": 1443, "swap_utilization_percent": 79.9,
+            "pageouts_per_second": 0.18, "swapins_per_second": 0,
+            "swapouts_per_second": 0, "memory_stall_percent": 0,
+            "telemetry_source": "host-sampler",
+        }
+        with patch("agent_capacity.cli.host_platform", return_value="darwin"), \
+                patch("agent_capacity.cli.read_host_sample", return_value=sample), \
+                patch.dict("os.environ", {}, clear=False):
+            os.environ.pop("AGENT_CAPACITY_HOST_METRICS", None)
+            m = system_metrics()
+        self.assertEqual(m["telemetry_source"], "host-sampler")
+        self.assertEqual(m["swap_utilization_percent"], 79.9)
+
     def test_unsupported_platform_reports_unavailable(self):
         import os
         with patch("agent_capacity.cli.host_platform", return_value="unsupported"):
             saved = {k: os.environ.pop(k, None) for k in
-                     ("AGENT_CAPACITY_TOTAL_MB", "AGENT_CAPACITY_MEMORY_LEVEL")}
+                     ("AGENT_CAPACITY_TOTAL_MB", "AGENT_CAPACITY_MEMORY_LEVEL",
+                      "AGENT_CAPACITY_HOST_METRICS")}
             try:
                 m = system_metrics()
             finally:

@@ -7,6 +7,8 @@ All notable changes to this project are documented here.
 - Stop treating retained macOS swap as current memory pressure: idle machines
   may run one declared build or test when it fits, while live paging, memory
   stalls, unknown swap at low headroom, and the protected OS floor still block.
+- Automatically consume the installed macOS host sampler so sandboxed clients
+  receive swap and paging truth without a private environment-variable override.
 
 - Add a Herdr workload pane with explicit execution, project-scoped job receipts,
   and cleanup gated on verified result recovery.
