@@ -374,8 +374,12 @@ def unavailable_metrics() -> dict[str, Any]:
 def system_metrics() -> dict[str, Any]:
     total_override = os.environ.get("AGENT_CAPACITY_TOTAL_MB")
     level_override = os.environ.get("AGENT_CAPACITY_MEMORY_LEVEL")
-    sampled = read_host_sample() if os.environ.get("AGENT_CAPACITY_HOST_METRICS") else None
     platform = host_platform()
+    # The macOS sampler exists specifically so sandboxed clients can consume
+    # swap and paging truth that `sysctl` cannot read inside their sandbox.
+    # An explicit path remains available for tests and non-macOS integrations.
+    sample_available = platform == "darwin" or bool(os.environ.get("AGENT_CAPACITY_HOST_METRICS"))
+    sampled = read_host_sample() if sample_available else None
     if sampled:
         metrics = sampled
     elif platform == "darwin":
