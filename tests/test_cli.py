@@ -201,17 +201,34 @@ def main() -> None:
         assert guarded["capacity_band"]["name"] == "guarded"
         assert guarded["recommendations"]["service"] == 4
         assert guarded["recommendations"]["light"] >= 1
-        assert guarded["recommendations"]["build"] == 0
+        assert guarded["recommendations"]["build"] == 1
+        assert guarded["budget"]["reserve_mb"] == 2048
         assert guarded["budget"]["swap_penalty_mb"] == 512
-        denied_result, actionable = call(
+        admitted_result, admitted = call(
             state, "acquire", "--workload", "build", "--owner", "test:guarded",
-            level=41, host_metrics=host_metrics, check=False,
+            level=41, host_metrics=host_metrics,
         )
-        assert denied_result.returncode == 2
-        assert actionable["denied_by"] == "insufficient_burst_headroom"
-        assert actionable["placement_advice"]["action"] == "assess_remote_placement"
-        assert actionable["placement_advice"]["automatic_dispatch"] is False
-        assert actionable["privacy"].endswith("are hidden")
+        assert admitted_result.returncode == 0
+        assert admitted["allowed"] is True
+        call(state, "release", admitted["token"], level=41, host_metrics=host_metrics)
+
+        # Regression from a real idle Mac: 43% headroom and no live paging was
+        # denied because 80% retained swap was treated as current pressure.
+        idle_mac_sample = json.loads(host_metrics.read_text())
+        idle_mac_sample.update({
+            "sampled_at": time.time(), "memory_level": 43,
+            "swap_used_mb": 5725, "swap_free_mb": 1443,
+            "swap_utilization_percent": 79.9,
+            "page_size_bytes": 16384, "pageouts_per_second": 0.18,
+            "swapins_per_second": 0, "swapouts_per_second": 0,
+        })
+        host_metrics.write_text(json.dumps(idle_mac_sample))
+        _, idle_mac = call(state, "status", level=43, host_metrics=host_metrics)
+        assert idle_mac["capacity_band"]["name"] == "guarded"
+        assert idle_mac["capacity_band"]["swap_activity_mb_per_second"] == 0.0
+        assert idle_mac["budget"]["reserve_mb"] == 2048
+        assert idle_mac["recommendations"]["build"] == 1
+        assert idle_mac["recommendations"]["test"] >= 1
 
         quiet_guarded_sample = json.loads(host_metrics.read_text())
         quiet_guarded_sample.update({
@@ -226,8 +243,8 @@ def main() -> None:
 
         # A quiet machine at one third free memory has room for one declared
         # build. Free-memory percentage alone cannot tell this apart from the
-        # swap-exhausted machine above, which has MORE free memory and must
-        # still be refused; retained swap and page-out activity can.
+        # actively paging machine below, which must still be refused; live
+        # page-out activity, not retained swap history, is the deciding signal.
         quiet_build_sample = json.loads(host_metrics.read_text())
         quiet_build_sample.update({
             "sampled_at": time.time(), "memory_level": 34,

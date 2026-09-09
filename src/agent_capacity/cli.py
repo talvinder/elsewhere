@@ -1189,7 +1189,7 @@ def capacity_band(metrics: dict[str, Any]) -> dict[str, Any]:
     elif level < 30 or activity_mb >= 2 or stall >= 5:
         name, reason = "constrained", "memory is tight or memory pressure is elevated"
     elif level < 50 or activity_mb >= 0.5 or stall >= 1:
-        name, reason = "guarded", "capacity is usable for quiet work but bursty work needs more margin"
+        name, reason = "guarded", "memory headroom is moderate; declared work may run when it fits and live paging is quiet"
     else:
         name, reason = "healthy", "the machine has room for normal local work"
     return {
@@ -1206,19 +1206,20 @@ def swap_pressure(metrics: dict[str, Any]) -> str:
 
     Free-memory percentage alone cannot separate a quiet machine that simply has
     a smaller working set from one that is only staying alive by paging: both can
-    report the same headroom. Retained swap plus page-out activity can. Unknown
-    swap is never treated as quiet, so a missing signal cannot unlock a burst.
+    report the same headroom. Current page-out activity can separate them;
+    retained swap alone only describes history. Unknown swap is never treated
+    as safe evidence, so a missing signal cannot unlock a low-headroom burst.
     """
     if not metrics.get("swap_known"):
-        return "elevated"
+        return "unknown"
     percent = float(metrics.get("swap_utilization_percent", 0))
     band = capacity_band(metrics)
     activity_mb = float(band["swap_activity_mb_per_second"])
     stall = float(band["memory_stall_percent"])
-    if percent >= 75 or activity_mb >= 0.5 or stall >= 1:
+    if activity_mb >= 0.5 or stall >= 1:
         return "stressed"
     if percent >= 50 or activity_mb >= 0.1:
-        return "elevated"
+        return "retained"
     return "quiet"
 
 
@@ -1236,10 +1237,10 @@ def available_budget(metrics: dict[str, Any], leases: list[dict[str, Any]]) -> d
     else:
         reserve_mb = 6144
     # A fixed 4-6 GB floor turns an ordinary 16-24 GB machine into a no-build
-    # zone while its RAM is genuinely free. When swap is quiet, keep a real OS
-    # floor and let one declared heavy job use the rest; the budget below still
-    # has to fit the whole workload.
-    if swap_pressure(metrics) == "quiet":
+    # zone while its RAM is genuinely free. When the machine is not actively
+    # paging, keep a real OS floor and let one declared heavy job use the rest;
+    # the budget below still has to fit the whole workload.
+    if swap_pressure(metrics) in {"quiet", "retained"}:
         reserve_mb = min(reserve_mb, 2048)
     reserve_mb = min(reserve_mb, max(0, total_mb - 1024))
     headroom_mb = int(total_mb * metrics["memory_level"] / 100)
@@ -1281,9 +1282,9 @@ def recommend_count(workload: str, maximum: int, metrics: dict[str, Any], leases
     if band == "constrained" and workload not in {"service", "light"}:
         return 0
     if band == "guarded" and definition["bursty"]:
-        # Only refuse the burst when low headroom coincides with swap stress.
-        # Quiet, genuinely available memory is usable.
-        if int(metrics["memory_level"]) < 45 and swap_pressure(metrics) != "quiet":
+        # Retained swap is historical. Refuse only for live paging/stall or
+        # when the swap signal is unavailable at low headroom.
+        if int(metrics["memory_level"]) < 45 and swap_pressure(metrics) in {"stressed", "unknown"}:
             return 0
 
     counts, total_units, heavy_units = active_counts(leases)
@@ -1323,7 +1324,7 @@ def admission_rule(workload: str, metrics: dict[str, Any], leases: list[dict[str
         return "active_swap_or_low_headroom"
     if (
         band == "guarded" and WORKLOADS[workload]["bursty"]
-        and int(metrics["memory_level"]) < 45 and swap_pressure(metrics) != "quiet"
+        and int(metrics["memory_level"]) < 45 and swap_pressure(metrics) in {"stressed", "unknown"}
     ):
         return "insufficient_burst_headroom"
     if available_budget(metrics, leases)["available_mb"] < int(WORKLOADS[workload]["mb"]):
