@@ -382,6 +382,7 @@ def system_metrics() -> dict[str, Any]:
     sampled = read_host_sample() if sample_available else None
     if sampled:
         metrics = sampled
+        metrics["sensing_available"] = True
     elif platform == "darwin":
         metrics = macos_direct_metrics()
     elif platform == "linux":

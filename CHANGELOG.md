@@ -9,6 +9,8 @@ All notable changes to this project are documented here.
   stalls, unknown swap at low headroom, and the protected OS floor still block.
 - Automatically consume the installed macOS host sampler so sandboxed clients
   receive swap and paging truth without a private environment-variable override.
+- Report that sampler as available in `elsewhere doctor`, matching the live
+  capacity decision instead of showing a contradictory installation warning.
 
 - Add a Herdr workload pane with explicit execution, project-scoped job receipts,
   and cleanup gated on verified result recovery.
