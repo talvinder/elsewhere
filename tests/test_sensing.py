@@ -172,6 +172,7 @@ class UnavailableSensingTests(unittest.TestCase):
             os.environ.pop("AGENT_CAPACITY_HOST_METRICS", None)
             m = system_metrics()
         self.assertEqual(m["telemetry_source"], "host-sampler")
+        self.assertTrue(m["sensing_available"])
         self.assertEqual(m["swap_utilization_percent"], 79.9)
 
     def test_unsupported_platform_reports_unavailable(self):
