@@ -1,7 +1,8 @@
-# Workspace adapter candidate
+# Workspace execution
 
-This is an implementation candidate for WORKSPACE_EXECUTION.md and its accepted
-WORKSPACE_ISOLATION.md clarification. It is not an installed or live-certified release.
+This implements WORKSPACE_EXECUTION.md and its accepted WORKSPACE_ISOLATION.md
+clarification. See [live validation](WORKSPACE_VALIDATION.md) for the tested journeys,
+candidate identity, and deliberately separate installation state.
 
 ## Developer workflow
 
@@ -40,7 +41,7 @@ It does not overwrite a pre-existing repository directory in the project workspa
 Optional `parent` has `name`, immutable `id`, and optional `checkpoint`. The parent
 and checkpoint are checked before source transfer. The receipt calls this a repository
 snapshot; it does not claim to have copied the parent's filesystem or caches.
-Native-fork requests fail closed in this candidate.
+Native-fork requests fail closed.
 
 Configure `providers.sprites.enabled` and `providers.sprites.organization` in a
 private Elsewhere config. Supply the API token through `SPRITES_TOKEN` or
@@ -121,8 +122,12 @@ exclusion, identity mismatch, interrupted streams, cancellation, retained worksp
 and repeated cleanup. A real local subprocess exercises source transport, changed
 files, verified recovery, and duplicate prevention.
 
-Live Sprites certification is still required: authenticate in a dedicated test
-organization, verify actual connector and checkpoint response shapes, run fresh and
-approved-project tasks, run two isolated snapshots, reconnect, recover a change, and
-verify task-owned deletion. No live claim follows from mocked API fixtures. Installation
-remains a separate explicitly approved action after exact candidate evidence.
+Live Sprites certification used a token restricted to task names, creation count,
+and expiry. It verified connector and checkpoint response shapes, fresh and approved
+project tasks, isolated snapshots, reconnection, changed-file recovery, cancellation,
+checkpoint retention, idle pause permission, supervised expiry, and verified deletion.
+The runner establishes its expiring activity hold and starts the bounded child before
+reporting readiness; detaching on session identity alone is insufficient. Creation
+reconciliation requires the exact generated name, a recorded absence before submission,
+and provider creation time matching that attempt; it never silently submits a session.
+Installation remains a separate action after exact candidate evidence.
