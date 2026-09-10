@@ -86,7 +86,9 @@ ledger and are not automatically retried into another destination.
 `job-cleanup` applies the approved action after verified recovery: keep, permit idle
 pause, create and identify a checkpoint, or delete and verify absence. Project
 workspaces cannot be deleted by task cleanup. Cancellation targets one session.
-Cleanup does not discard unrecovered results, even after cancellation.
+Cleanup preserves unrecovered results after cancellation unless the developer
+explicitly supplies `--discard-results`. A recorded preparation failure before
+session submission can delete its task-owned workspace without inventing results.
 
 Retention deadlines are recorded for the originating supervisor. This candidate does
 not provide an always-on expiry service or a provider-enforced deletion deadline.

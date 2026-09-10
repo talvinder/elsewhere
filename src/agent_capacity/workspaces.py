@@ -14,6 +14,7 @@ from agent_capacity.artifact_transport import (
     SOURCE_EXCLUDES,
     package_source,
 )
+from agent_capacity.provenance import runtime_provenance
 from agent_capacity.providers.sprites import SpriteError, SpritesProvider
 from agent_capacity.results import inspect_result_bundle, validate_result_paths
 from agent_capacity.workspace_contract import (
@@ -71,6 +72,13 @@ def plan(cli, request: dict, args, config: dict) -> tuple[dict, dict]:
         "estimated_cost_usd": args.estimated_cost_usd,
         "result_paths": validate_result_paths(args.result_path),
     }
+    runtime = runtime_provenance()
+    job.update(
+        runtime_revision=runtime["revision"],
+        runtime_dirty=runtime["dirty"],
+        runtime_code_sha256=runtime["code_sha256"],
+        runtime_capture_method=runtime["capture_method"],
+    )
     boundary = approval_boundary(job, provider.identity(provider.values))
     result = {
         "provider": provider.name,
@@ -107,12 +115,26 @@ def execute(cli, job: dict, config: dict, receipt: str | None) -> dict:
     provider.verify_connectors(request["connectors"])
     name = request.get("project", {}).get("name") or job["name"]
     job.update(
+        submission_phase="preparing",
         workspace_name=name,
         state="submitting",
         approval_receipt=cli.trust_receipt(config["trust"]),
     )
     # Atomic project claim: a second local caller cannot mutate the same workspace.
-    with cli.locked_jobs() as (data, _):
+    with cli.locked_jobs() as (data, ledger):
+        if ledger.exists():
+            try:
+                recorded = json.loads(ledger.read_text())
+                if (
+                    not isinstance(recorded, dict)
+                    or not isinstance(recorded.get("jobs"), list)
+                    or any(not isinstance(item, dict) for item in recorded["jobs"])
+                ):
+                    raise ValueError("invalid ledger schema")
+            except (OSError, ValueError) as error:
+                raise ValueError(
+                    "workspace ownership ledger is unreadable; refusing a new claim"
+                ) from error
         for existing in data["jobs"]:
             if (
                 existing.get("provider") == job["provider"]
@@ -193,6 +215,7 @@ def execute(cli, job: dict, config: dict, receipt: str | None) -> dict:
             Path(__file__).with_name("workspace_runner.py").read_bytes(),
         )
         provider.write(name, root + "/spec.json", json.dumps(runner_spec).encode())
+        cli.update_job(job["id"], submission_phase="starting_session")
         session = provider.start(
             name,
             ["python3", root + "/runner.py", root + "/spec.json"],
@@ -201,6 +224,7 @@ def execute(cli, job: dict, config: dict, receipt: str | None) -> dict:
         cli.update_job(
             job["id"],
             state="running",
+            submission_phase="session_identified",
             session_id=session,
             submitted_at=int(time.time()),
         )
@@ -217,15 +241,18 @@ def execute(cli, job: dict, config: dict, receipt: str | None) -> dict:
     return cli.find_job(job["id"])
 
 
-def action(cli, job: dict, action_name: str, config: dict) -> dict:
+def action(
+    cli, job: dict, action_name: str, config: dict, discard_results: bool = False
+) -> dict:
     if (
         action_name in ("status", "results", "logs")
         and job.get("result", {}).get("state") == "collected"
     ):
         return job  # Verified local results remain readable after remote deletion or credential expiry.
     provider = adapter(job["provider"], config)
-    # Receipt changes never authorize access to a previously selected destination.
-    cli.require_trust(job, job["plan"], config, job["approval_receipt"])
+    # A renewed grant may authorize the same exact boundary. A changed destination
+    # still fails the shared comparison against the original reviewed plan.
+    cli.require_trust(job, job["plan"], config)
     if not job.get("workspace_id"):
         raise ValueError(
             "workspace identity unresolved; automatic adoption or resubmission is forbidden"
@@ -314,8 +341,29 @@ def action(cli, job: dict, action_name: str, config: dict) -> dict:
     if action_name != "cleanup":
         raise ValueError("unsupported workspace action")
     if job.get("result", {}).get("state") != "collected":
-        raise ValueError(
-            "recover verified results before workspace retention or deletion"
+        never_started = job.get("submission_phase") == "preparing"
+        if (
+            discard_results
+            and not never_started
+            and job.get("state")
+            not in {"cancelled", "failed", "succeeded", "outcome_unknown"}
+        ):
+            raise ValueError("cancel active work before discarding its results")
+        if never_started and job["workspace"]["intent"] == "project":
+            cli.update_job(
+                job["id"],
+                workspace_released=True,
+                retention_state="preparation-retained",
+            )
+            return cli.find_job(job["id"])
+        if job["workspace"]["retention"] != "delete" or not (
+            never_started or discard_results
+        ):
+            raise ValueError(
+                "recover verified results before workspace retention or deletion"
+            )
+        cli.update_job(
+            job["id"], result={"state": "not-started" if never_started else "discarded"}
         )
     retention = job["workspace"]["retention"]
     if retention != "delete" and not job["result"].get("activity_released"):

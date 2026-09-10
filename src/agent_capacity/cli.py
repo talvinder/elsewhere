@@ -1963,7 +1963,7 @@ def run_job_action(job_id: str, action: str, discard_results: bool = False) -> i
         raise SystemExit(f"unknown job: {job_id}")
     if job.get("execution_contract") == "workspace":
         try:
-            current = workspaces.action(sys.modules[__name__], job, action, load_config())
+            current = workspaces.action(sys.modules[__name__], job, action, load_config(), discard_results=discard_results)
         except (ValueError, RuntimeError) as error:
             raise SystemExit(str(error)) from error
         print_json({"job": public_job_view(current), "action": action})

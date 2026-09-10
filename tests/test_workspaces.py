@@ -320,6 +320,25 @@ class LifecycleTests(unittest.TestCase):
             workspaces.action(self.facade, self.job, "cleanup", {})
         self.provider.delete.assert_not_called()
 
+    def test_preparation_failure_can_clean_without_inventing_results(self):
+        self.job.update(
+            result={}, submission_phase="preparing", state="submission_uncertain"
+        )
+        self.provider.get.side_effect = [{"id": "immutable"}, None]
+        result = workspaces.action(self.facade, self.job, "cleanup", {})
+        self.assertEqual(result["retention_state"], "deleted")
+        self.assertEqual(result["result"]["state"], "not-started")
+
+    def test_discard_requires_cancellation_of_active_work(self):
+        self.job.update(
+            result={}, submission_phase="session_identified", state="running"
+        )
+        with self.assertRaisesRegex(ValueError, "cancel active work"):
+            workspaces.action(
+                self.facade, self.job, "cleanup", {}, discard_results=True
+            )
+        self.provider.delete.assert_not_called()
+
     def test_project_never_deleted(self):
         self.job["workspace"]["intent"] = "project"
         with self.assertRaisesRegex(ValueError, "cannot delete project"):
@@ -501,6 +520,13 @@ class DispatchTests(unittest.TestCase):
         job, plan = workspaces.plan(cli, spec or request(), self.args, self.config)
         self.config["trust"]["workspace_boundaries"] = [plan["workspace_boundary"]]
         return job
+
+    def test_corrupt_ownership_ledger_blocks_new_workspace(self):
+        (self.root / "jobs.json").write_text("corrupt")
+        with self.assertRaisesRegex(ValueError, "ownership ledger"):
+            workspaces.execute(cli, self.planned(), self.config, None)
+        self.provider.create.assert_not_called()
+        self.assertEqual((self.root / "jobs.json").read_text(), "corrupt")
 
     def test_unapproved_dispatch_creates_nothing(self):
         job = self.planned()
