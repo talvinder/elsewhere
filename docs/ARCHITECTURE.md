@@ -107,10 +107,12 @@ resources expire. It does not implement a new isolation runtime.
 
 Execution providers implement a common lifecycle: plan, submit, status, logs,
 result delivery, cancel, and cleanup. The first release includes local execution, Fly Machines, and
-Azure Container Instances. OpenSandbox is the preferred next adapter because its
-Apache-licensed API already covers sandbox lifecycle, resource limits, files,
-commands, and multiple runtime backends. OpenShell can be used later for strongly
-policy-controlled coding-agent sessions.
+Azure Container Instances. The accepted next execution contract is
+[developer-supervised workspace execution](WORKSPACE_EXECUTION.md), including Fly
+Sprites alongside the existing providers. That document is authoritative for
+workspace intent, capability verification, authority, lineage, and retention;
+it does not claim that the adapter has shipped. Other workspace providers remain
+possible through the same provider-neutral contract.
 
 ## Stable workload contract
 
