@@ -173,6 +173,7 @@ def approval_boundary(job: dict, identity: dict) -> dict:
         "source_path": job["source_path"],
         "source_fingerprint": job.get("source_fingerprint"),
         "privilege_policy": job["workspace"].get("privilege_policy", {}),
+        "new_task_name_prefix": "ew-",
         "retention_expiry": "release-project" if job["workspace"]["intent"] == "project" else "delete-task-workspace-after-recovery",
         "workspace": job["workspace"],
         "command_sha256": fingerprint(job["command"]),

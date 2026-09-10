@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from agent_capacity.artifact_transport import (
@@ -111,6 +113,8 @@ def execute(cli, job: dict, config: dict, receipt: str | None) -> dict:
     if not provider.ready()[0]:
         raise ValueError("workspace provider is not configured")
     request = job["workspace"]
+    if not re.fullmatch(r"[0-9a-f]{32}", job["id"]) or job["name"] != "ew-" + job["id"]:
+        raise ValueError("new task identity is outside the approved naming scope")
     if request.get("derivation", "snapshot") != "snapshot":
         raise ValueError(
             "native fork execution requires a verified native lifecycle; no snapshot substitution"
@@ -169,6 +173,7 @@ def execute(cli, job: dict, config: dict, receipt: str | None) -> dict:
         else:
             if provider.get(name) is not None:
                 raise ValueError("new task workspace name already exists")
+            cli.update_job(job["id"], creation_started_at=int(time.time()), creation_name_absent=True)
             value = provider.create(name)
         job["workspace_id"] = value["id"]
         cli.update_job(job["id"], workspace_id=value["id"])
@@ -273,9 +278,19 @@ def action(
     # still fails the shared comparison against the original reviewed plan.
     cli.require_trust(job, job["plan"], config)
     if not job.get("workspace_id"):
-        raise ValueError(
-            "workspace identity unresolved; automatic adoption or resubmission is forbidden"
-        )
+        value = provider.get(job["workspace_name"])
+        started = job.get("creation_started_at")
+        try:
+            created = datetime.fromisoformat(value["created_at"].replace("Z", "+00:00")).timestamp() if value else None
+        except (KeyError, TypeError, ValueError):
+            created = None
+        if not (job.get("creation_name_absent") and started and created
+                and started - 1 <= created <= started + 120
+                and job["workspace_name"] == "ew-" + job["id"]):
+            raise ValueError("workspace identity unresolved; automatic adoption or resubmission is forbidden")
+        job = cli.update_job(job["id"], workspace_id=value["id"], creation_reconciled=True)
+        if action_name in ("status", "logs", "results"):
+            return job  # Creation recovered; no session is silently submitted.
     value = assert_identity(provider, job)
     if (
         action_name == "cleanup"
@@ -386,9 +401,7 @@ def action(
                 retention_state="preparation-retained",
             )
             return cli.find_job(job["id"])
-        if job["workspace"]["retention"] != "delete" or not (
-            never_started or discard_results
-        ):
+        if not never_started and (job["workspace"]["retention"] != "delete" or not discard_results):
             raise ValueError(
                 "recover verified results before workspace retention or deletion"
             )
@@ -396,6 +409,8 @@ def action(
             job["id"], result={"state": "not-started" if never_started else "discarded"}
         )
     retention = job["workspace"]["retention"]
+    if job.get("submission_phase") == "preparing" and job["workspace"]["intent"] != "project":
+        retention = "delete"
     if (
         retention != "delete"
         and job.get("retention_expires_at", float("inf")) <= time.time()

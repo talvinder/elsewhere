@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [0.2.0a2] - 2026-09-10
+
+- Add provider-neutral persistent workspace execution with Sprites as its first
+  adapter: fresh work, approved projects, and isolated repository snapshots.
+- Bind workspace execution to exact source content, identity, access policies,
+  resources, runtime, estimated cost, and supervised retention expiry.
+- Keep disconnected tasks alive only after runner readiness, recover verified
+  changes, reconcile interrupted sessions, and protect shared projects from task deletion.
+- Add `workspace-reap --execute` to recover results and apply overdue retention
+  when the developer reconnects. Native checkpoint forks remain unsupported.
+
 - Stop treating retained macOS swap as current memory pressure: idle machines
   may run one declared build or test when it fits, while live paging, memory
   stalls, unknown swap at low headroom, and the protected OS floor still block.

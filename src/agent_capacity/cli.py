@@ -107,10 +107,11 @@ def redact_sensitive_text(value: str) -> str:
     )
     value = re.sub(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}", "Bearer <redacted>", value)
     value = re.sub(
-        r"(?i)\b(AWS_SECRET_ACCESS_KEY|AZURE_CLIENT_SECRET|GITHUB_TOKEN|OPENAI_API_KEY)"
+        r"(?i)\b(AWS_SECRET_ACCESS_KEY|AZURE_CLIENT_SECRET|GITHUB_TOKEN|OPENAI_API_KEY|SPRITES_TOKEN|SPRITE_TOKEN)"
         r"\s*[=:]\s*[^\s,;]+",
         lambda match: f"{match.group(1)}=<redacted>", value,
     )
+    value = re.sub(r"\b[A-Za-z0-9_-]+/[0-9]+/[0-9a-f]{32}/[0-9a-f]{64}\b", "<redacted-workspace-token>", value)
     return value
 
 

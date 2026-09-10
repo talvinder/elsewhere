@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -578,6 +579,18 @@ class DispatchTests(unittest.TestCase):
         self.provider.create.assert_not_called()
         self.provider.write.assert_not_called()
 
+    def test_task_name_cannot_escape_approved_scope(self):
+        job = self.planned()
+        job["name"] = "unrelated-workspace"
+        with self.assertRaisesRegex(ValueError, "naming scope"):
+            workspaces.execute(cli, job, self.config, None)
+        self.provider.create.assert_not_called()
+
+    def test_workspace_credentials_are_redacted(self):
+        token = "example/123/" + "a" * 32 + "/" + "b" * 64
+        self.assertNotIn(token, cli.redact_sensitive_text("Token: " + token))
+        self.assertEqual(cli.redact_sensitive_text("SPRITES_TOKEN=secret"), "SPRITES_TOKEN=<redacted>")
+
     def test_privilege_drift_blocks_source_transfer(self):
         self.provider.privileges.return_value = {"unexpected": True}
         with self.assertRaisesRegex(ValueError, "privilege policy"):
@@ -621,6 +634,22 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(retained["state"], "submission_uncertain")
         self.assertTrue(retained["workspace_id"])
         self.provider.start.assert_called_once()
+
+    def test_ambiguous_creation_recovers_identity_without_running_work(self):
+        def uncertain_create(name):
+            self.inventory[name] = {"id": "created-id", "name": name, "created_at": datetime.now(UTC).isoformat()}
+            raise SpriteError("response interrupted")
+        self.provider.create.side_effect = uncertain_create
+        job = self.planned()
+        with self.assertRaises(SpriteError):
+            workspaces.execute(cli, job, self.config, None)
+        recovered = workspaces.action(cli, cli.find_job(job["id"]), "status", self.config)
+        self.assertTrue(recovered["creation_reconciled"])
+        self.assertEqual(recovered["workspace_id"], "created-id")
+        self.provider.start.assert_not_called()
+        self.provider.write.assert_not_called()
+        self.provider.delete = unittest.mock.Mock(side_effect=lambda name: self.inventory.pop(name))
+        self.assertEqual(workspaces.action(cli, recovered, "cleanup", self.config)["retention_state"], "deleted")
 
     def test_project_policy_drift_stops_source_transfer(self):
         self.inventory["project"] = {"id": "project-id", "name": "project"}
