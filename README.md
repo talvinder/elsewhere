@@ -319,7 +319,9 @@ elsewhere release TOKEN
 ## Provider model
 
 The open-source router does not force a destination. Fly and Azure are the first
-adapters. OpenSandbox is the preferred sandbox-runtime integration. OpenShell can
+disposable-compute adapters. Fly Sprites is the first persistent-workspace adapter,
+behind a provider-neutral capability contract. OpenSandbox is a planned
+sandbox-runtime integration. OpenShell can
 provide stronger policy controls for full coding-agent sessions. GCP, Kubernetes,
 and other providers belong behind the same workload contract.
 
@@ -334,6 +336,29 @@ Elsewhere owns:
 
 Execution providers own the machinery underneath. Elsewhere wraps them instead of
 rebuilding them.
+
+## Persistent workspaces with Sprites
+
+Use a disposable Machine for a clean, bounded run, or a workspace when installed
+tools and files need to persist between tasks. Sprite support in v0.2.0a2 includes
+fresh workspaces, explicitly approved existing projects, and isolated repository
+snapshots. Each task returns verified files for local review.
+
+Workspace requests use `route --provider sprites --workspace-spec request.json`.
+Follow the [workspace setup and execution guide](docs/WORKSPACE_ADAPTER.md) for
+configuration, token handling, request examples and the exact trust boundary.
+Planning does not export source; execution requires `--execute` and workspace
+approval. Existing Fly Machines approval does not authorize Sprites.
+
+The same job commands recover results, reconnect for diagnostics, cancel a session
+and apply approved retention. Project workspaces are protected from task deletion.
+Cleanup and retention are supervised from the originating device after reconnect;
+storage can remain billable while that device is offline. Native checkpoint forks
+and cross-device takeover are not supported.
+
+The [live workspace validation record](docs/WORKSPACE_VALIDATION.md) covers
+execution, reconnection, changed-file recovery, cancellation, retention and verified
+deletion. Sprites is an adapter, not a requirement for future workspace providers.
 
 ## Security model
 
@@ -377,7 +402,9 @@ bring their own infrastructure.
 
 Elsewhere v0.2 is an alpha. Local placement, Fly and Azure dispatch, source transport,
 regional retry, a same-device durable job lifecycle, verified result return,
-idempotent cleanup, and the Codex/Claude integration work today. Cross-device job
+idempotent cleanup, persistent Sprite workspaces, and the Codex/Claude integration
+work today. Offline cost comparison uses caller-supplied estimates and does not
+automatically change routing. Cross-device job
 observation and takeover require a future shared control plane or portable handoff.
 Additional providers and OpenSandbox integration are on the roadmap.
 
