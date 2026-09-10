@@ -1,6 +1,6 @@
 {
   "name": "elsewhere",
-  "version": "0.2.0a1",
+  "version": "0.2.0a2",
   "description": "Trust-aware workload routing and queue control for Codex.",
   "author": {
     "name": "Talvinder Singh",

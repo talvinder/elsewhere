@@ -519,6 +519,7 @@ def main() -> None:
         assert tool_names == {
             "elsewhere_trust_status", "elsewhere_queue", "elsewhere_plan",
             "elsewhere_dispatch", "elsewhere_job_status", "elsewhere_job_control", "elsewhere_job_wait",
+            "elsewhere_workspace_plan", "elsewhere_workspace_dispatch",
         }
         assert "Work in motion" in dashboard_html("test-token")
         assert "test-token" in dashboard_html("test-token")
