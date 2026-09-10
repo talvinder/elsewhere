@@ -209,8 +209,10 @@ class AdapterTests(unittest.TestCase):
         provider = SpritesProvider()
 
         class Connection:
+            messages = iter(['{"type":"session_info","session_id":"123"}', b'\x01ELSEWHERE_WORKSPACE_READY\n'])
+
             def recv(self):
-                return '{"type":"session_info","session_id":"123"}'
+                return next(self.messages)
 
             def close(self):
                 pass
@@ -222,6 +224,14 @@ class AdapterTests(unittest.TestCase):
             self.assertEqual(provider.start("task", ["echo", "ok"], 90), "123")
             self.assertIn("max_run_after_disconnect=90s", connect.call_args.args[0])
             self.assertNotIn("test-secret", connect.call_args.args[0])
+
+    def test_session_identity_without_runner_ready_is_not_detachable(self):
+        connection = unittest.mock.Mock()
+        connection.recv.side_effect = ['{"type":"session_info","session_id":"123"}', b'']
+        with patch.dict(os.environ, {"SPRITES_TOKEN": "test-secret"}), patch("websocket.create_connection", return_value=connection):
+            with self.assertRaisesRegex(SpriteError, "uncertain"):
+                SpritesProvider().start("task", ["python3", "runner.py"], 90)
+        connection.close.assert_called_once()
 
 
 class RunnerJourneyTests(unittest.TestCase):

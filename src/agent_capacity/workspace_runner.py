@@ -79,6 +79,8 @@ def run(spec_path: str) -> int:
                     resource.RLIMIT_FSIZE, (16 * 1024 * 1024, 16 * 1024 * 1024)
                 ),
             )
+            # Detach only after the activity hold and bounded child both exist.
+            print("ELSEWHERE_WORKSPACE_READY", flush=True)
             try:
                 code = child.wait(timeout=spec["max_runtime_seconds"])
             except subprocess.TimeoutExpired:
@@ -93,6 +95,8 @@ def run(spec_path: str) -> int:
                         os.killpg(child.pid, signal.SIGKILL)
                         child.wait()
                 code = 130
+    except InterruptedError:
+        code = 130
     finally:
         # Stop descendants even when the shell exited successfully.
         if child:

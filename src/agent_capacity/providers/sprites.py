@@ -10,15 +10,13 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from agent_capacity.workspace_contract import Capabilities
+from agent_capacity.workspace_contract import Capabilities, WorkspaceError
 
 MAX_RESPONSE = 250 * 1024 * 1024
 
 
-class SpriteError(RuntimeError):
-    def __init__(self, message: str, status: int | None = None):
-        super().__init__(message)
-        self.status = status
+class SpriteError(WorkspaceError):
+    pass
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -59,6 +57,9 @@ class SpritesProvider:
 
     def resources(self) -> dict:
         return {"cpu": 8, "memory": "provider-managed", "storage_gb": 100}
+
+    def task_root(self, job_id: str) -> str:
+        return "/home/sprite/.elsewhere/tasks/" + segment(job_id)
 
     def ready(self) -> tuple[bool, str]:
         if not self.values.get("enabled") or not self.values.get("organization"):
@@ -376,6 +377,8 @@ class SpritesProvider:
                 redirect_limit=0,
             )
             try:
+                session = None
+                ready_output = b""
                 for _ in range(64):
                     message = connection.recv()
                     if isinstance(message, str):
@@ -383,7 +386,11 @@ class SpritesProvider:
                         if event.get("type") == "session_info" and event.get(
                             "session_id"
                         ):
-                            return segment(str(event["session_id"]))
+                            session = segment(str(event["session_id"]))
+                    elif isinstance(message, bytes) and message[:1] == b"\x01":
+                        ready_output = (ready_output + message[1:])[-4096:]
+                    if session and b"ELSEWHERE_WORKSPACE_READY\n" in ready_output:
+                        return session
                     if not message:
                         break
             finally:

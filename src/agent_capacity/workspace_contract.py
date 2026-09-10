@@ -11,6 +11,12 @@ INTENTS = ("fresh", "project", "isolated")
 RETENTION = ("keep", "sleep", "checkpoint", "delete")
 
 
+class WorkspaceError(RuntimeError):
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        self.status = status
+
+
 def fingerprint(value: Any) -> str:
     return hashlib.sha256(
         json.dumps(
@@ -53,6 +59,7 @@ class WorkspaceProvider(Protocol):
     def privileges(self, name: str) -> dict: ...
     def observe_session(self, name: str, session: str) -> dict: ...
     def sessions(self, name: str) -> list[dict]: ...
+    def task_root(self, job_id: str) -> str: ...
 
 
 def validate_request(request: dict, capabilities: Capabilities) -> None:

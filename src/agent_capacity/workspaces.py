@@ -16,9 +16,10 @@ from agent_capacity.artifact_transport import (
     source_content_fingerprint,
 )
 from agent_capacity.provenance import runtime_provenance
-from agent_capacity.providers.sprites import SpriteError, SpritesProvider
+from agent_capacity.providers.sprites import SpritesProvider
 from agent_capacity.results import inspect_result_bundle, validate_result_paths
 from agent_capacity.workspace_contract import (
+    WorkspaceError,
     approval_boundary,
     choose_workspace_provider,
     fingerprint,
@@ -164,7 +165,7 @@ def execute(cli, job: dict, config: dict, receipt: str | None) -> dict:
         if request["intent"] == "project":
             value = provider.get(name)
             if not value or value["id"] != request["project"]["id"]:
-                raise ValueError("approved project Sprite identity does not match")
+                raise ValueError("approved project workspace identity does not match")
         else:
             if provider.get(name) is not None:
                 raise ValueError("new task workspace name already exists")
@@ -193,7 +194,7 @@ def execute(cli, job: dict, config: dict, receipt: str | None) -> dict:
         source, manifest = package_source(job["source_path"], job["id"])
         if manifest["content_sha256"] != job["source_fingerprint"]:
             raise ValueError("source changed during packaging; no source exported")
-        root = "/home/sprite/.elsewhere/tasks/" + job["id"]
+        root = provider.task_root(job["id"])
         lineage = {
             "derivation": "repository-snapshot",
             "parent": parent,
@@ -290,8 +291,9 @@ def action(
                 raw = provider.read(
                     job["workspace_name"], job["remote_root"] + "/result.tar.gz"
                 )
-            except SpriteError as error:
+            except WorkspaceError as error:
                 if error.status == 404:
+                    evidence = {}
                     if not job.get("session_id") and job.get("remote_root"):
                         matches = [s for s in provider.sessions(job["workspace_name"])
                                    if job["remote_root"] + "/runner.py" in s.get("command", "")]
@@ -301,7 +303,6 @@ def action(
                         evidence = provider.observe_session(job["workspace_name"], job["session_id"])
                         cli.update_job(job["id"], provider_evidence={"unverified_session_output": evidence})
                     if action_name == "logs":
-                        evidence = {}
                         for channel in ("stdout", "stderr"):
                             try:
                                 content = provider.read(
@@ -311,7 +312,7 @@ def action(
                                 evidence[channel] = cli.redact_sensitive_text(
                                     content[-12000:].decode("utf-8", errors="replace")
                                 )
-                            except SpriteError as log_error:
+                            except WorkspaceError as log_error:
                                 if log_error.status != 404:
                                     raise
                         cli.update_job(
