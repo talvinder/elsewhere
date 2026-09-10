@@ -26,6 +26,11 @@
 
 ## Your laptop is a starting point, not a limit
 
+Compare estimated destination costs without exporting source or starting resources:
+`elsewhere compare examples/cost-comparison.json`. See the
+[comparison contract](docs/COST_COMPARISON.md) for utilization, eligibility,
+deadline and budget inputs. The included rates are synthetic examples.
+
 Start a build, agent task, spreadsheet transformation, or data job from the machine
 in front of you. Elsewhere checks whether the work fits there. If it does not, it
 moves the inputs to compute you already trust, keeps the placement decision visible,

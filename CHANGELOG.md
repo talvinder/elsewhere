@@ -4,6 +4,10 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- Add offline, provider-neutral `elsewhere compare` for caller-supplied utilization,
+  total job cost, eligibility, deadline and budget estimates. Recommendations
+  remain advisory and do not authorize execution.
+
 ## [0.2.0a2] - 2026-09-10
 
 - Add provider-neutral persistent workspace execution with Sprites as its first

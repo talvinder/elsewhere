@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "deadline_seconds": 7200,
+  "budget_usd": 10,
+  "candidates": [
+    {
+      "runtime_seconds": 3600,
+      "setup_seconds": 0,
+      "queue_seconds": 0,
+      "average_cpus": 1,
+      "average_memory_gb": 2,
+      "fixed_hour_usd": 0.2,
+      "cpu_hour_usd": 0,
+      "gb_hour_usd": 0,
+      "transfer_usd": 0,
+      "retained_storage_usd": 0,
+      "ineligible_reasons": [],
+      "id": "fixed"
+    },
+    {
+      "runtime_seconds": 3600,
+      "setup_seconds": 0,
+      "queue_seconds": 0,
+      "average_cpus": 1,
+      "average_memory_gb": 2,
+      "fixed_hour_usd": 0,
+      "cpu_hour_usd": 0.05,
+      "gb_hour_usd": 0.025,
+      "transfer_usd": 0,
+      "retained_storage_usd": 0,
+      "ineligible_reasons": [],
+      "id": "usage"
+    }
+  ]
+}

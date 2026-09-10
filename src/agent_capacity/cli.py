@@ -3032,6 +3032,8 @@ def make_parser() -> argparse.ArgumentParser:
         action_parser.add_argument("job_id")
         if action == "job-cleanup":
             action_parser.add_argument("--discard-results", action="store_true")
+    compare_parser = commands.add_parser("compare", help="compare supplied destination estimates without execution")
+    compare_parser.add_argument("spec", help="versioned JSON comparison file")
     hidden_commands = {"sample-memory", "_local-worker"}
     commands._choices_actions = [
         action for action in commands._choices_actions
@@ -3154,6 +3156,15 @@ def sampler_remove() -> dict[str, Any]:
 
 def main() -> int:
     args = make_parser().parse_args()
+
+    if args.command == "compare":
+        from .economics import compare
+        try:
+            result = compare(json.loads(Path(args.spec).read_text()))
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise SystemExit(f"Invalid comparison: {exc}") from None
+        print_json(result)
+        return 0
 
     if args.command == "_local-worker":
         return run_local_worker(args.job_id)
