@@ -25,6 +25,11 @@ completion evidence.
 
 ## Adding a provider
 
+Persistent workspaces extend this interface through the separate capability and
+ownership requirements in [Workspace execution](WORKSPACE_EXECUTION.md). Do not
+model a workspace's sleeping state as an OCI job exit or its deletion as task
+cancellation. Fly Machines and Sprites have distinct execution contracts.
+
 1. Add one module under `src/agent_capacity/providers/`.
 2. Implement every method in `ComputeProvider`.
 3. Register one instance in `providers/__init__.py`.

@@ -2,6 +2,10 @@
 
 ## Open core
 
+- developer-supervised persistent and isolated task workspaces, including Fly
+  Sprites, under the accepted [workspace execution contract](WORKSPACE_EXECUTION.md);
+  native checkpoint fork remains capability-gated pending verified provider support
+
 - encrypted portable job handoff and an optional shared control plane for
   cross-device status, result recovery, and cleanup
 - OpenSandbox lifecycle, command, file, and resource-limit adapter
