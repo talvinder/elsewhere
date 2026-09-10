@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [0.3.0a1] - 2026-09-10
+
+- Mark the workspace-capable feature milestone: provider-neutral persistent
+  workspaces, verified Sprite lifecycle recovery, supervised retention, and
+  offline destination cost comparison. Includes all 0.2.0a2 capabilities below.
+- Publish as an explicitly approved alpha prerelease with independent-user
+  onboarding and release-matched public lifecycle evidence still outstanding.
+  Publication does not certify beta maturity; see `docs/RELEASE_0.3.md`.
+
 - Add offline, provider-neutral `elsewhere compare` for caller-supplied utilization,
   total job cost, eligibility, deadline and budget estimates. Recommendations
   remain advisory and do not authorize execution.

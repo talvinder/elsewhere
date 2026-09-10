@@ -22,7 +22,7 @@
 </p>
 
 > [!IMPORTANT]
-> Elsewhere v0.2 is a public alpha. Jobs can move from macOS or Linux to approved cloud compute and continue while your laptop sleeps. For now, the device that started the job is also the only place that can check its status, recover results, or confirm cleanup. Cross-device control is not yet supported. See [Project status](#project-status) for the exact boundary.
+> Elsewhere v0.3 is a public alpha. Jobs can move from macOS or Linux to approved cloud compute and continue while your laptop sleeps. For now, the device that started the job is also the only place that can check its status, recover results, or confirm cleanup. Cross-device control is not yet supported. See [Project status](#project-status) for the exact boundary.
 
 ## Your laptop is a starting point, not a limit
 
@@ -80,12 +80,16 @@ No mystery cloud. No surprise machine left running for the weekend.
 
 ## Quick start
 
+The current prerelease is [0.3.0a1](https://github.com/talvinder/elsewhere/releases/tag/v0.3.0a1),
+combining persistent Sprite workspaces and offline cost comparison. See the
+[release status and evidence gaps](docs/RELEASE_0.3.md) before adopting this alpha.
+
 Elsewhere requires Python 3.11 or newer. With [`uv`](https://docs.astral.sh/uv/)
 installed, inspect your machine and run one harmless local command under Elsewhere's
 placement decision:
 
 ```sh
-uv tool install git+https://github.com/talvinder/elsewhere.git
+uv tool install git+https://github.com/talvinder/elsewhere.git@v0.3.0a1
 elsewhere status --human
 elsewhere route \
   --workload light \
@@ -400,7 +404,7 @@ bring their own infrastructure.
 
 ## Project status
 
-Elsewhere v0.2 is an alpha. Local placement, Fly and Azure dispatch, source transport,
+Elsewhere v0.3 is an alpha. Local placement, Fly and Azure dispatch, source transport,
 regional retry, a same-device durable job lifecycle, verified result return,
 idempotent cleanup, persistent Sprite workspaces, and the Codex/Claude integration
 work today. Offline cost comparison uses caller-supplied estimates and does not
