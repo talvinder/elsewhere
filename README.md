@@ -80,12 +80,16 @@ No mystery cloud. No surprise machine left running for the weekend.
 
 ## Quick start
 
+The current prerelease is [0.3.0a1](https://github.com/talvinder/elsewhere/releases/tag/v0.3.0a1),
+combining persistent Sprite workspaces and offline cost comparison. See the
+[release status and evidence gaps](docs/RELEASE_0.3.md) before adopting this alpha.
+
 Elsewhere requires Python 3.11 or newer. With [`uv`](https://docs.astral.sh/uv/)
 installed, inspect your machine and run one harmless local command under Elsewhere's
 placement decision:
 
 ```sh
-uv tool install git+https://github.com/talvinder/elsewhere.git
+uv tool install git+https://github.com/talvinder/elsewhere.git@v0.3.0a1
 elsewhere status --human
 elsewhere route \
   --workload light \

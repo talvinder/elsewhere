@@ -1,4 +1,4 @@
-# 0.3.0a1 candidate
+# 0.3.0a1 prerelease
 
 This minor-version milestone combines persistent workspace execution and offline
 destination cost comparison. It retains alpha status. The package, CLI and Codex
@@ -6,8 +6,10 @@ plugin share the same version.
 
 ## Publication status
 
-The version bump is an implementation milestone, not a public-release certificate.
-Do not publish its tag or release until the existing `--release` gate passes.
+This version is published as an explicitly approved alpha prerelease with the
+following evidence gaps disclosed. Publication does not certify the existing
+`--release` or `--maturity` evidence gates, which remain unchanged. This exception
+applies to 0.3.0a1 only; it does not authorize beta or stable release claims.
 The September 10 evidence audit returned 17/25 on `--maturity`:
 
 - The public evidence file contains one maintainer run on macOS, rather than the
