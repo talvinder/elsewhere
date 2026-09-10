@@ -90,11 +90,29 @@ Cleanup preserves unrecovered results after cancellation unless the developer
 explicitly supplies `--discard-results`. A recorded preparation failure before
 session submission can delete its task-owned workspace without inventing results.
 
-Retention deadlines are recorded for the originating supervisor. This candidate does
-not provide an always-on expiry service or a provider-enforced deletion deadline.
-Keep, sleep, and checkpoint retention therefore require supervisor follow-through;
-release certification must establish the acceptable expiry behavior before claiming
-bounded unattended retention. No paid resource is created by planning or tests.
+Retention is supervised by the originating developer. The reviewed boundary names
+the expiry action: delete a task-owned workspace after verified recovery, or release
+the task's claim on an existing project. The deadline is submission preparation plus
+the maximum runtime and retention duration; status polling never extends it.
+`workspace-reap` previews overdue entries without provider calls. Add `--execute` to
+recover results and apply each entry's approved expiry action. Failures remain in the
+ledger for retry; expired credentials or changed authority stop mutation. The command
+returns a nonzero status when an entry is blocked. Run it after reconnecting or from
+the developer's existing scheduler. No hosted supervisor is introduced. Storage can
+remain billable while that supervisor is offline: this is not a provider-enforced
+wall-clock deletion guarantee. Runtime and activity holds still expire remotely.
+
+Selecting an exact retained task workspace as a project transfers its lifetime to
+the approved project and prevents the originating task from deleting it later.
+Ordinary `job-cleanup` also applies expiry when overdue; it never discards results
+implicitly. Planning and unit tests create no paid resources.
+
+The boundary includes the source content fingerprint and privilege policy (the
+explicit default is `{}`). Source drift before creation or during packaging stops
+export. Existing and newly created workspaces must match the approved privileges.
+`job-logs` can reconnect to the original session for diagnostics, but session exit
+alone never substitutes for a verified result bundle. Ambiguous session submission
+can recover a unique session whose command names the exact task runner directory.
 
 ## Validation boundary
 

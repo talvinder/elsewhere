@@ -13,6 +13,7 @@ import signal
 import subprocess
 import sys
 import tarfile
+import time
 from pathlib import Path
 
 
@@ -113,6 +114,7 @@ def run(spec_path: str) -> int:
                 "source_fingerprint": spec["source_fingerprint"],
                 "lineage": spec["lineage"],
                 "activity_released": activity_released,
+                "completed_at": int(time.time()),
             }
         )
     )

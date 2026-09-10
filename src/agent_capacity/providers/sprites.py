@@ -199,6 +199,56 @@ class SpritesProvider:
             self.request("GET", "/sprites/" + segment(name) + "/policy/network")
         )
 
+    def privileges(self, name: str) -> dict:
+        value = json.loads(self.request("GET", "/sprites/" + segment(name) + "/policy/privileges"))
+        if not isinstance(value, dict):
+            raise SpriteError("unrecognized privilege policy")
+        return value
+
+    def sessions(self, name: str) -> list[dict]:
+        value = json.loads(self.request("GET", "/sprites/" + segment(name) + "/exec"))
+        if isinstance(value, dict):
+            value = value.get("sessions")
+        if not isinstance(value, list) or any(not isinstance(x, dict) or not x.get("id") for x in value):
+            raise SpriteError("unrecognized session inventory")
+        return value
+
+    def observe_session(self, name: str, session: str) -> dict:
+        """Reconnect for bounded diagnostics; only the result bundle proves task outcome."""
+        from websocket import WebSocketTimeoutException, create_connection
+
+        evidence = {"stdout": "", "stderr": "", "session_exit_code": None}
+        connection = None
+        try:
+            connection = create_connection(
+                self.endpoint.replace("https://", "wss://") + "/sprites/" + segment(name) + "/exec/" + segment(session),
+                header={"Authorization": "Bearer " + self.token()}, timeout=2, redirect_limit=0,
+            )
+            for _ in range(64):
+                message = connection.recv()
+                if not message:
+                    break
+                if isinstance(message, bytes):
+                    if message[0] in (1, 2):
+                        key = "stdout" if message[0] == 1 else "stderr"
+                        evidence[key] = (evidence[key] + message[1:].decode(errors="replace"))[-12000:]
+                    elif message[0] == 3 and len(message) == 2:
+                        evidence["session_exit_code"] = message[1]
+                        break
+                else:
+                    event = json.loads(message)
+                    if event.get("type") == "exit":
+                        evidence["session_exit_code"] = event.get("exit_code")
+                        break
+        except WebSocketTimeoutException:
+            pass
+        except Exception:
+            raise SpriteError("session reconnection failed; original task remains unresolved") from None
+        finally:
+            if connection:
+                connection.close()
+        return evidence
+
     def set_policy(self, name: str, policy: dict) -> None:
         self.request("POST", "/sprites/" + segment(name) + "/policy/network", policy)
         if self.policy(name) != policy:
@@ -250,6 +300,8 @@ class SpritesProvider:
     def verify_connectors(self, expected: list[dict]) -> None:
         # Organization inventory is approved explicitly; no token is projected.
         inventory = json.loads(self.request("GET", "/oauth/connections"))
+        if isinstance(inventory, dict) and set(inventory) == {"connections"}:
+            inventory = inventory["connections"]
         if not isinstance(inventory, list):
             raise SpriteError("connector inventory schema requires live verification")
         actual = []

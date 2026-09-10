@@ -13,6 +13,7 @@ from agent_capacity.artifact_transport import (
     SOURCE_EXCLUDE_SUFFIXES,
     SOURCE_EXCLUDES,
     package_source,
+    source_content_fingerprint,
 )
 from agent_capacity.provenance import runtime_provenance
 from agent_capacity.providers.sprites import SpriteError, SpritesProvider
@@ -62,6 +63,7 @@ def plan(cli, request: dict, args, config: dict) -> tuple[dict, dict]:
         "execution_contract": "workspace",
         "workspace": request,
         "source_path": str(Path(args.source_path).resolve()),
+        "source_fingerprint": source_content_fingerprint(args.source_path),
         "command": args.workload_command,
         "workload": args.workload,
         "state": "planned",
@@ -113,6 +115,8 @@ def execute(cli, job: dict, config: dict, receipt: str | None) -> dict:
             "native fork execution requires a verified native lifecycle; no snapshot substitution"
         )
     provider.verify_connectors(request["connectors"])
+    if source_content_fingerprint(job["source_path"]) != job["source_fingerprint"]:
+        raise ValueError("source content differs from the approved fingerprint; plan again")
     name = request.get("project", {}).get("name") or job["name"]
     job.update(
         submission_phase="preparing",
@@ -144,6 +148,16 @@ def execute(cli, job: dict, config: dict, receipt: str | None) -> dict:
                 raise ValueError(
                     "workspace already has an unresolved task; recover and release it first"
                 )
+            if (
+                request["intent"] == "project"
+                and existing.get("provider") == job["provider"]
+                and existing.get("workspace_id") == request["project"]["id"]
+                and existing.get("workspace_name") == name
+                and existing.get("workspace", {}).get("intent") != "project"
+            ):
+                # Exact project approval transfers lifetime ownership away from a task.
+                existing["retention_state"] = "transferred-to-project"
+                existing["workspace_transferred"] = True
         data["jobs"].append(job)
     source = None
     try:
@@ -171,10 +185,14 @@ def execute(cli, job: dict, config: dict, receipt: str | None) -> dict:
                 raise ValueError("existing project policy differs from approval")
         else:
             provider.set_policy(name, request["network_policy"])
+        if provider.privileges(name) != request.get("privilege_policy", {}):
+            raise ValueError("workspace privilege policy differs from approval")
         provider.verify_connectors(request["connectors"])
         # Recheck the active authority immediately before reading/exporting source.
         cli.require_trust(job, job["plan"], cli.load_config(), receipt)
         source, manifest = package_source(job["source_path"], job["id"])
+        if manifest["content_sha256"] != job["source_fingerprint"]:
+            raise ValueError("source changed during packaging; no source exported")
         root = "/home/sprite/.elsewhere/tasks/" + job["id"]
         lineage = {
             "derivation": "repository-snapshot",
@@ -206,7 +224,7 @@ def execute(cli, job: dict, config: dict, receipt: str | None) -> dict:
             lineage=lineage,
             source_manifest=manifest,
             retention_state="pending",
-            retention_expires_at=int(time.time()) + request["retention_seconds"],
+            retention_expires_at=int(time.time()) + job["max_runtime_seconds"] + request["retention_seconds"],
         )
         provider.write(name, root + "/source.tar.gz", source.read_bytes())
         provider.write(
@@ -274,6 +292,14 @@ def action(
                 )
             except SpriteError as error:
                 if error.status == 404:
+                    if not job.get("session_id") and job.get("remote_root"):
+                        matches = [s for s in provider.sessions(job["workspace_name"])
+                                   if job["remote_root"] + "/runner.py" in s.get("command", "")]
+                        if len(matches) == 1:
+                            job = cli.update_job(job["id"], session_id=str(matches[0]["id"]), submission_phase="session_reconciled")
+                    if action_name == "logs" and job.get("session_id"):
+                        evidence = provider.observe_session(job["workspace_name"], job["session_id"])
+                        cli.update_job(job["id"], provider_evidence={"unverified_session_output": evidence})
                     if action_name == "logs":
                         evidence = {}
                         for channel in ("stdout", "stderr"):
@@ -327,7 +353,8 @@ def action(
                 result=result,
                 returncode=result["exit_code"],
                 state="succeeded" if result["exit_code"] == 0 else "failed",
-                completed_at=int(time.time()),
+                completed_at=manifest.get("completed_at", int(time.time())),
+                recovered_at=int(time.time()),
             )
         return cli.find_job(job["id"])
     if action_name == "cancel":
@@ -340,6 +367,8 @@ def action(
         return cli.find_job(job["id"])
     if action_name != "cleanup":
         raise ValueError("unsupported workspace action")
+    if job.get("workspace_transferred"):
+        raise ValueError("workspace ownership transferred to an approved project; task deletion is forbidden")
     if job.get("result", {}).get("state") != "collected":
         never_started = job.get("submission_phase") == "preparing"
         if (
@@ -366,6 +395,14 @@ def action(
             job["id"], result={"state": "not-started" if never_started else "discarded"}
         )
     retention = job["workspace"]["retention"]
+    if (
+        retention != "delete"
+        and job.get("retention_expires_at", float("inf")) <= time.time()
+        and job["workspace"]["intent"] != "project"
+    ):
+        if job["plan"]["workspace_boundary"].get("retention_expiry") != "delete-task-workspace-after-recovery":
+            raise ValueError("expired retention has no approved deletion action")
+        retention = "delete"
     if retention != "delete" and not job["result"].get("activity_released"):
         raise ValueError(
             "task activity release is unverified; do not claim sleep or completed retention"
@@ -393,3 +430,28 @@ def action(
         state = "retained" if retention == "keep" else "idle-pause-allowed"
     cli.update_job(job["id"], retention_state=state, workspace_released=True)
     return cli.find_job(job["id"])
+
+
+def reap(cli, config: dict, execute: bool = False) -> dict:
+    """Resume supervisor-owned expiry. Never discard results or delete a project."""
+    with cli.locked_jobs() as (data, _):
+        jobs = list(data["jobs"])
+    results = []
+    for job in jobs:
+        if (job.get("execution_contract") != "workspace"
+                or job.get("retention_state") in {"deleted", "transferred-to-project", "project-released"}
+                or job.get("retention_expires_at", float("inf")) > time.time()):
+            continue
+        item = {"job_id": job["id"], "due": True, "executed": False}
+        if execute:
+            try:
+                current = action(cli, job, "results", config)
+                current = action(cli, current, "cleanup", config)
+                if current["workspace"]["intent"] == "project":
+                    current = cli.update_job(job["id"], retention_state="project-released")
+                item.update(executed=True, retention_state=current["retention_state"])
+            except (ValueError, RuntimeError, SystemExit) as error:
+                item["blocked"] = cli.redact_sensitive_text(str(error))
+        results.append(item)
+    return {"executed": execute, "retention": results,
+            "supervision": "runs on this device; overdue work resumes when invoked after reconnect"}

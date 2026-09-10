@@ -351,6 +351,21 @@ class LifecycleTests(unittest.TestCase):
             workspaces.action(self.facade, self.job, "cleanup", {})
         self.provider.delete.assert_not_called()
 
+    def test_expired_task_retention_deletes_only_after_verified_recovery(self):
+        self.job["workspace"]["retention"] = "keep"
+        self.job["retention_expires_at"] = 1
+        self.job["plan"] = {"workspace_boundary": {"retention_expiry": "delete-task-workspace-after-recovery"}}
+        self.provider.get.side_effect = [{"id": "immutable"}, None]
+        result = workspaces.action(self.facade, self.job, "cleanup", {})
+        self.assertEqual(result["retention_state"], "deleted")
+        self.provider.delete.assert_called_once_with("example")
+
+    def test_transfer_to_project_revokes_task_deletion(self):
+        self.job["workspace_transferred"] = True
+        with self.assertRaisesRegex(ValueError, "transferred"):
+            workspaces.action(self.facade, self.job, "cleanup", {})
+        self.provider.delete.assert_not_called()
+
     def test_sleep_and_keep_do_not_claim_deletion(self):
         for retention, expected in (
             ("sleep", "idle-pause-allowed"),
@@ -436,6 +451,14 @@ class LifecycleTests(unittest.TestCase):
                 ]
             )
 
+    def test_live_connector_inventory_envelope(self):
+        provider = SpritesProvider()
+        with patch.object(provider, "request", return_value=b'{"connections": []}'):
+            provider.verify_connectors([])
+        with patch.object(provider, "request", return_value=b'{"connections": [], "has_more": true}'):
+            with self.assertRaisesRegex(SpriteError, "schema"):
+                provider.verify_connectors([])
+
 
 class DispatchTests(unittest.TestCase):
     def setUp(self):
@@ -503,6 +526,7 @@ class DispatchTests(unittest.TestCase):
             return_value=request()["network_policy"]
         )
         self.provider.set_policy = unittest.mock.Mock()
+        self.provider.privileges = unittest.mock.Mock(return_value={})
         self.provider.verify_connectors = unittest.mock.Mock()
         self.provider.write = unittest.mock.Mock()
         self.provider.start = unittest.mock.Mock(return_value="session")
@@ -534,6 +558,20 @@ class DispatchTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             workspaces.execute(cli, job, self.config, None)
         self.provider.create.assert_not_called()
+        self.provider.write.assert_not_called()
+
+    def test_changed_source_requires_new_approval_before_creation(self):
+        job = self.planned()
+        (self.source / "file.txt").write_text("changed after approval")
+        with self.assertRaisesRegex(ValueError, "approved fingerprint"):
+            workspaces.execute(cli, job, self.config, None)
+        self.provider.create.assert_not_called()
+        self.provider.write.assert_not_called()
+
+    def test_privilege_drift_blocks_source_transfer(self):
+        self.provider.privileges.return_value = {"unexpected": True}
+        with self.assertRaisesRegex(ValueError, "privilege policy"):
+            workspaces.execute(cli, self.planned(), self.config, None)
         self.provider.write.assert_not_called()
 
     def test_snapshot_tasks_have_distinct_workspaces_and_same_lineage(self):

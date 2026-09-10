@@ -3016,6 +3016,9 @@ def make_parser() -> argparse.ArgumentParser:
     worker_parser = commands.add_parser("_local-worker")
     worker_parser.add_argument("job_id")
 
+    reap_parser = commands.add_parser("workspace-reap", help="preview or apply overdue workspace retention after verified result recovery")
+    reap_parser.add_argument("--execute", action="store_true")
+
     job_help = {
         "job-status": "refresh and show one job's lifecycle state",
         "job-logs": "show privacy-safe logs for one job",
@@ -3532,6 +3535,11 @@ def main() -> int:
         value["decision"] = decision
         print_json(value)
         return code
+
+    if args.command == "workspace-reap":
+        result = workspaces.reap(sys.modules[__name__], load_config(), args.execute)
+        print_json(result)
+        return 1 if any(item.get("blocked") for item in result["retention"]) else 0
 
     if args.command in ("job-status", "job-logs", "job-results", "job-cancel", "job-cleanup"):
         return run_job_action(

@@ -90,6 +90,21 @@ def _read_stable_source_file(path: Path) -> tuple[bytes | None, os.stat_result |
     return content, after, None
 
 
+def source_content_fingerprint(source_path: str) -> str:
+    """Hash the transportable source without creating or exporting an archive."""
+    root = Path(source_path).expanduser().resolve()
+    files = []
+    for path in sorted(root.rglob("*")):
+        if not source_file_allowed(root, path)[0]:
+            continue
+        content, _, error = _read_stable_source_file(path)
+        if error or content is None:
+            raise ValueError("source changed or cannot be read while planning")
+        files.append({"path": path.relative_to(root).as_posix(),
+                      "sha256": hashlib.sha256(content).hexdigest(), "size": len(content)})
+    return source_fingerprint(files)
+
+
 def package_source(source_path: str, job_id: str) -> tuple[Path, dict[str, Any]]:
     root = Path(source_path).expanduser().resolve()
     if not root.is_dir():

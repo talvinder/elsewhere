@@ -50,6 +50,9 @@ class WorkspaceProvider(Protocol):
     def checkpoints(self, name: str) -> list[dict]: ...
     def verify_connectors(self, expected: list[dict]) -> None: ...
     def activity_commands(self, job_id: str, runtime: int) -> dict: ...
+    def privileges(self, name: str) -> dict: ...
+    def observe_session(self, name: str, session: str) -> dict: ...
+    def sessions(self, name: str) -> list[dict]: ...
 
 
 def validate_request(request: dict, capabilities: Capabilities) -> None:
@@ -65,6 +68,7 @@ def validate_request(request: dict, capabilities: Capabilities) -> None:
         "network_policy",
         "connectors",
         "resources",
+        "privilege_policy",
     }
     if set(request) - allowed:
         raise ValueError("unknown workspace request fields")
@@ -134,6 +138,8 @@ def validate_request(request: dict, capabilities: Capabilities) -> None:
         )
     if not isinstance(request.get("resources"), dict):
         raise ValueError("explicit provider resource semantics must be approved")
+    if not isinstance(request.get("privilege_policy", {}), dict):
+        raise ValueError("privilege policy must be an explicit object")
 
 
 def choose_workspace_provider(
@@ -158,6 +164,9 @@ def approval_boundary(job: dict, identity: dict) -> dict:
         "provider": job["provider"],
         "identity": identity,
         "source_path": job["source_path"],
+        "source_fingerprint": job.get("source_fingerprint"),
+        "privilege_policy": job["workspace"].get("privilege_policy", {}),
+        "retention_expiry": "release-project" if job["workspace"]["intent"] == "project" else "delete-task-workspace-after-recovery",
         "workspace": job["workspace"],
         "command_sha256": fingerprint(job["command"]),
         "max_runtime_seconds": job["max_runtime_seconds"],
