@@ -5,6 +5,10 @@ implemented or verified Sprites support. It extends DEVELOPER_JOURNEY.md. The
 developer remains the supervisor and reviews returned changes. Autonomous
 supervision and a hosted multi-tenant control plane are outside this phase.
 
+The accepted [isolation clarification](WORKSPACE_ISOLATION.md) resolves the native
+fork gate below: verified repository snapshot isolation is the first implementation;
+native checkpoint forks remain a distinct optional capability.
+
 ## Placement and ownership
 
 Elsewhere first decides what kind of execution the work needs, then where it may
