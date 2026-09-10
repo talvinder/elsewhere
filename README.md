@@ -22,7 +22,7 @@
 </p>
 
 > [!IMPORTANT]
-> Elsewhere v0.2 is a public alpha. Jobs can move from macOS or Linux to approved cloud compute and continue while your laptop sleeps. For now, the device that started the job is also the only place that can check its status, recover results, or confirm cleanup. Cross-device control is not yet supported. See [Project status](#project-status) for the exact boundary.
+> Elsewhere v0.3 is a public alpha. Jobs can move from macOS or Linux to approved cloud compute and continue while your laptop sleeps. For now, the device that started the job is also the only place that can check its status, recover results, or confirm cleanup. Cross-device control is not yet supported. See [Project status](#project-status) for the exact boundary.
 
 ## Your laptop is a starting point, not a limit
 
@@ -400,7 +400,7 @@ bring their own infrastructure.
 
 ## Project status
 
-Elsewhere v0.2 is an alpha. Local placement, Fly and Azure dispatch, source transport,
+Elsewhere v0.3 is an alpha. Local placement, Fly and Azure dispatch, source transport,
 regional retry, a same-device durable job lifecycle, verified result return,
 idempotent cleanup, persistent Sprite workspaces, and the Codex/Claude integration
 work today. Offline cost comparison uses caller-supplied estimates and does not
