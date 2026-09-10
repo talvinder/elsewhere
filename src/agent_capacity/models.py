@@ -6,6 +6,7 @@ REMOTE_ACTIVE_STATES = {
     "planned",
     "submitting",
     "submission_uncertain",
+    "outcome_unknown",
     "submitted",
     "queued",
     "running",

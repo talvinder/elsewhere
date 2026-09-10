@@ -31,7 +31,7 @@ from urllib.parse import parse_qs, urlparse
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agent_capacity import __version__
+from agent_capacity import __version__, workspaces
 from agent_capacity.artifact_transport import (
     cleanup_artifact as cleanup_source_artifact,
     download_artifact,
@@ -130,6 +130,7 @@ def public_job_view(job: dict[str, Any]) -> dict[str, Any]:
         "id", "name", "provider", "workload", "state", "created_at", "submitted_at",
         "started_at", "completed_at", "cleaned_at", "last_checked_at", "returncode",
         "result_paths", "result", "provider_absent", "provider_evidence", "transitions",
+        "execution_contract", "retention_state", "retention_expires_at", "workspace_released",
     )
     return sanitize_persisted_value({
         **{key: job.get(key) for key in fields if key in job},
@@ -555,12 +556,12 @@ def trust_receipt(policy: dict[str, Any]) -> str | None:
 
 def provider_identity(provider: str, config: dict[str, Any]) -> dict[str, str]:
     values = config["providers"].get(provider, {})
-    return get_provider(provider).identity(values)
+    return (workspaces.adapter(provider, config).identity(values) if provider in workspaces.WORKSPACE_PROVIDERS else get_provider(provider).identity(values))
 
 
 def provider_regions(provider: str, config: dict[str, Any]) -> list[str]:
     values = config["providers"].get(provider, {})
-    return get_provider(provider).regions(values)
+    return [] if provider in workspaces.WORKSPACE_PROVIDERS else get_provider(provider).regions(values)
 
 
 def artifact_store_identity(config: dict[str, Any]) -> dict[str, str]:
@@ -712,6 +713,16 @@ def evaluate_trust(
             reasons.append("source path is outside the approved roots")
         if source_info.get("dirty") and not source_policy.get("allow_uncommitted"):
             reasons.append("uncommitted or unversioned source export is not approved")
+    if job.get("execution_contract") == "workspace":
+        from agent_capacity.workspace_contract import approval_boundary, fingerprint
+        boundary = plan.get("workspace_boundary")
+        if boundary != approval_boundary(job, provider_identity(provider, config)):
+            reasons.append("workspace job differs from its reviewed boundary")
+        approved_boundaries = policy.get("workspace_boundaries", [])
+        if not isinstance(approved_boundaries, list) or boundary not in approved_boundaries:
+            reasons.append("workspace source, command, identity, policy, resources, or retention is not approved")
+        if not isinstance(boundary, dict) or fingerprint(boundary) != plan.get("boundary_sha256"):
+            reasons.append("workspace approval boundary is malformed")
     approved_store = policy.get("artifact_store", {})
     try:
         live_store = artifact_store_identity(config)
@@ -829,6 +840,7 @@ def approve_trust(
     max_runtime_seconds: int,
     max_estimated_cost_usd: float,
     expires_days: int,
+    workspace_boundaries: list[dict] | None = None,
 ) -> dict[str, Any]:
     selected = config_path()
     if path.exists():
@@ -881,6 +893,8 @@ def approve_trust(
             "max_estimated_cost_usd": max_estimated_cost_usd,
         },
     }
+    if workspace_boundaries:
+        config["trust"]["workspace_boundaries"] = workspace_boundaries
     save_config(config, path)
     return {"saved_to": str(path), **trust_status(config)}
 
@@ -1496,6 +1510,8 @@ def provider_order(config: dict[str, Any], workload: str, requested: str) -> lis
 
 def provider_ready(provider: str, config: dict[str, Any]) -> tuple[bool, str]:
     values = config["providers"].get(provider, {})
+    if provider in workspaces.WORKSPACE_PROVIDERS:
+        return workspaces.adapter(provider, config).ready()
     adapter = get_provider(provider)
     if not contract_complete(adapter):
         return False, "provider adapter does not satisfy the lifecycle contract"
@@ -1579,6 +1595,9 @@ def build_dispatch_plan(
     rejected: list[dict[str, str]] = []
     ordered_providers = provider_order(config, workload, provider)
     for candidate in ordered_providers:
+        if candidate not in SUPPORTED_PROVIDERS:
+            rejected.append({"provider": candidate, "reason": "provider does not implement disposable OCI execution"})
+            continue
         ready, reason = provider_ready(candidate, config)
         if ready:
             selected = candidate
@@ -1881,6 +1900,9 @@ def run_local_job_action(job: dict[str, Any], action: str) -> int:
 
 
 def refresh_remote_job(job: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    if job.get("execution_contract") == "workspace":
+        current = workspaces.action(sys.modules[__name__], job, "status", load_config())
+        return current, {"returncode": 0, "observation": {"state": current["state"], "evidence": {}}}
     provider = get_provider(job["provider"])
     result = subprocess.run(provider.status_command(job), text=True, capture_output=True)
     observation = provider.parse_status(result.stdout, result.stderr, result.returncode, job)
@@ -1939,6 +1961,13 @@ def run_job_action(job_id: str, action: str, discard_results: bool = False) -> i
     job = find_job(job_id)
     if job is None:
         raise SystemExit(f"unknown job: {job_id}")
+    if job.get("execution_contract") == "workspace":
+        try:
+            current = workspaces.action(sys.modules[__name__], job, action, load_config())
+        except (ValueError, RuntimeError) as error:
+            raise SystemExit(str(error)) from error
+        print_json({"job": public_job_view(current), "action": action})
+        return 0
     if job.get("provider") == "local":
         return run_local_job_action(job, action)
     provider = get_provider(job["provider"])
@@ -2114,7 +2143,7 @@ def job_summary(job: dict[str, Any]) -> dict[str, Any]:
     if state == "waiting_for_capacity":
         reason = job.get("last_admission", {}).get("reason", "waiting for local capacity")
     elif state == "running":
-        reason = "running on this machine"
+        reason = "running on this machine" if job.get("provider") == "local" else "running remotely"
     elif state == "submitted":
         reason = f"submitted to {job.get('provider')}; use job status to refresh provider state"
     elif state in {"failed", "submission_failed"}:
@@ -2398,7 +2427,24 @@ def mcp_tools() -> list[dict[str, Any]]:
             "maxItems": 32, "default": [],
         },
     }
-    return [
+    workspace_properties = {key: dispatch_properties[key] for key in ("workload", "command", "source_path", "max_runtime_seconds", "estimated_cost_usd", "result_paths")}
+    workspace_properties.update(provider={"type": "string", "enum": ["auto", *workspaces.WORKSPACE_PROVIDERS]}, workspace={"type": "object"})
+    workspace_required = ["workload", "command", "source_path", "max_runtime_seconds", "estimated_cost_usd", "workspace"]
+    workspace_tools = []
+    for operation in ("plan", "dispatch"):
+        properties = dict(workspace_properties)
+        required = list(workspace_required)
+        if operation == "dispatch":
+            properties.update(approval_receipt={"type": "string"}, execute={"type": "boolean"})
+            required.extend(["approval_receipt", "execute"])
+        workspace_tools.append({
+            "name": "elsewhere_workspace_" + operation,
+            "title": operation.title() + " Continuing Workspace Work",
+            "description": "Use explicit workspace intent, capability selection, exact approval, source lineage, and deliberate retention. Native forks never silently become snapshots.",
+            "inputSchema": {"type": "object", "properties": properties, "required": required, "additionalProperties": False},
+            "annotations": {"readOnlyHint": operation == "plan", "destructiveHint": False, "idempotentHint": operation == "plan", "openWorldHint": operation == "dispatch"},
+        })
+    return workspace_tools + [
         {
             "name": "elsewhere_trust_status",
             "title": "Inspect Elsewhere Trust",
@@ -2550,6 +2596,20 @@ def wait_for_job(job_id: str, timeout_seconds: int = 30, after_cursor: str = "")
 
 
 def mcp_call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    if name in ("elsewhere_workspace_plan", "elsewhere_workspace_dispatch"):
+        args = argparse.Namespace(provider=arguments.get("provider", "auto"), source_path=arguments["source_path"],
+            git_url=None, git_ref=None, image=None, max_runtime_seconds=arguments["max_runtime_seconds"],
+            estimated_cost_usd=arguments["estimated_cost_usd"], workload_command=arguments["command"],
+            workload=arguments["workload"], result_path=arguments.get("result_paths", []),
+            approval_receipt=arguments.get("approval_receipt"))
+        config = load_config()
+        job, plan = workspaces.plan(sys.modules[__name__], arguments["workspace"], args, config)
+        if name == "elsewhere_workspace_plan":
+            return {"executed": False, "plan": plan, "job": public_job_view(job)}
+        if arguments.get("execute") is not True:
+            raise ValueError("workspace dispatch requires explicit execute=true")
+        current = workspaces.execute(sys.modules[__name__], job, config, args.approval_receipt)
+        return {"executed": True, "job": public_job_view(current)}
     if name == "elsewhere_trust_status":
         return trust_status()
     if name == "elsewhere_queue":
@@ -2826,7 +2886,8 @@ def make_parser() -> argparse.ArgumentParser:
         "trust-approve", help="approve exact providers, source roots, and limits"
     )
     trust_approve_parser.add_argument("--path", default=str(global_config_path()))
-    trust_approve_parser.add_argument("--provider", action="append", choices=SUPPORTED_PROVIDERS, required=True)
+    trust_approve_parser.add_argument("--provider", action="append", choices=(*SUPPORTED_PROVIDERS, *workspaces.WORKSPACE_PROVIDERS), required=True)
+    trust_approve_parser.add_argument("--workspace-boundary", action="append", default=[], help="exact workspace_boundary JSON from a reviewed plan")
     trust_approve_parser.add_argument("--source-root", action="append", required=True)
     trust_approve_parser.add_argument("--allow-uncommitted", action=argparse.BooleanOptionalAction, default=False)
     trust_approve_parser.add_argument("--allow-private", action=argparse.BooleanOptionalAction, default=False)
@@ -2933,7 +2994,9 @@ def make_parser() -> argparse.ArgumentParser:
     )
     route_parser.add_argument("--workload", choices=WORKLOADS, required=True)
     route_parser.add_argument("--execution", choices=("auto", "local", "remote"), default="auto")
-    route_parser.add_argument("--provider", choices=("auto", *SUPPORTED_PROVIDERS), default="auto")
+    route_parser.add_argument("--provider", choices=("auto", *SUPPORTED_PROVIDERS, *workspaces.WORKSPACE_PROVIDERS), default="auto")
+    route_parser.add_argument("--workspace-spec", help="JSON workspace intent and explicit resource/policy/retention contract")
+    route_parser.add_argument("--device-bound", action="store_true", help="work requires this device; never export it")
     route_parser.add_argument("--image")
     route_parser.add_argument("--command", dest="workload_command", required=True)
     route_parser.add_argument("--cpu", type=int, default=2)
@@ -3144,6 +3207,7 @@ def main() -> int:
             args.allow_uncommitted, args.allow_private, args.max_cpu,
             args.max_memory_mb, args.max_runtime_seconds,
             args.max_estimated_cost_usd, args.expires_days,
+            [json.loads(Path(path).read_text()) for path in args.workspace_boundary],
         )
         print_json(value)
         return 0
@@ -3313,7 +3377,7 @@ def main() -> int:
         for provider in config["providers"]:
             ready, reason = provider_ready(provider, config)
             values[provider] = {
-                "adapter_installed": provider in SUPPORTED_PROVIDERS,
+                "adapter_installed": provider in (*SUPPORTED_PROVIDERS, *workspaces.WORKSPACE_PROVIDERS),
                 "ready": ready,
                 "reason": reason,
                 "config": config["providers"][provider],
@@ -3385,6 +3449,12 @@ def main() -> int:
         decision["automatic_placement"] = automatic_placement
         if decision["forced"]:
             decision["reason"] = f"caller explicitly selected {placement} execution"
+        if args.workspace_spec and placement == "local":
+            if args.execution == "local" or args.device_bound:
+                raise SystemExit("explicit workspace identity or isolation requires a compatible workspace provider")
+            placement = "remote"
+            decision["placement"] = "remote"
+            decision["reason"] = "requested continuing workspace contract requires a compatible remote provider"
         if placement == "local":
             if not args.execute:
                 print_json({"executed": False, "decision": decision, "command": args.workload_command})
@@ -3425,6 +3495,23 @@ def main() -> int:
             })
             return result.returncode
 
+        if args.device_bound:
+            raise SystemExit("device-bound work must remain local; remote execution is forbidden")
+        if args.workspace_spec:
+            try:
+                request = json.loads(Path(args.workspace_spec).read_text())
+                config = load_config()
+                job, plan = workspaces.plan(sys.modules[__name__], request, args, config)
+                if not args.execute:
+                    print_json({"executed": False, "decision": decision, "job": public_job_view(job), "plan": plan})
+                    return 0
+                current = workspaces.execute(sys.modules[__name__], job, config, args.approval_receipt)
+                print_json({"executed": True, "decision": decision, "job": public_job_view(current)})
+                return 0
+            except (ValueError, RuntimeError) as error:
+                raise SystemExit(str(error)) from error
+        if args.provider in workspaces.WORKSPACE_PROVIDERS:
+            raise SystemExit("workspace provider requires --workspace-spec; it cannot run an OCI job")
         if not args.image:
             raise SystemExit("remote placement requires --image")
         job, plan = build_dispatch_plan(

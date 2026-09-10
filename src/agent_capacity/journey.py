@@ -32,7 +32,7 @@ def source_fingerprint(files: list[dict[str, Any]]) -> str:
 
 def completion_receipt(job: dict[str, Any]) -> dict[str, Any]:
     result = job.get("result") or {}
-    source = (job.get("source_artifact") or {}).get("manifest") or {}
+    source = (job.get("source_artifact") or {}).get("manifest") or job.get("source_manifest") or {}
     start = job.get("submitted_at") or job.get("started_at")
     end = job.get("completed_at")
     return {
@@ -40,14 +40,15 @@ def completion_receipt(job: dict[str, Any]) -> dict[str, Any]:
         "provider": job.get("provider"),
         "state": job.get("state"),
         "source_fingerprint": source.get("content_sha256"),
-        "source_file_count": source.get("file_count"),
-        "source_skipped_count": source.get("skipped_count"),
+        "source_file_count": source.get("file_count", len(source["files"]) if "files" in source else None),
+        "source_skipped_count": source.get("skipped_count", len(source["skipped"]) if "skipped" in source else None),
         "exit_code": result.get("exit_code", job.get("returncode")),
         "result_verified": result.get("state") == "collected",
         "result_path": result.get("local_path"),
         "elapsed_seconds": max(0, end - start) if end is not None and start is not None else None,
-        "resources": {key: job.get(key) for key in ("cpu", "memory_mb", "max_runtime_seconds")},
+        "resources": job.get("workspace", {}).get("resources") if job.get("execution_contract") == "workspace" else {key: job.get(key) for key in ("cpu", "memory_mb", "max_runtime_seconds")},
         "estimated_cost_usd": job.get("estimated_cost_usd"),
         "cost_kind": "estimate",
-        "cleanup_verified": job.get("state") == "cleaned" and job.get("provider_absent") is True,
+        "cleanup_verified": (job.get("state") == "cleaned" and job.get("provider_absent") is True) or job.get("retention_state") == "deleted",
+        **({"retention_state": job.get("retention_state"), "derivation": job.get("lineage", {}).get("derivation")} if job.get("execution_contract") == "workspace" else {}),
     }

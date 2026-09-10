@@ -1,0 +1,347 @@
+"""Shared workspace orchestration using the existing trust receipt and job ledger."""
+
+from __future__ import annotations
+
+import json
+import math
+import time
+import uuid
+from pathlib import Path
+
+from agent_capacity.artifact_transport import (
+    SOURCE_EXCLUDE_NAMES,
+    SOURCE_EXCLUDE_SUFFIXES,
+    SOURCE_EXCLUDES,
+    package_source,
+)
+from agent_capacity.providers.sprites import SpriteError, SpritesProvider
+from agent_capacity.results import inspect_result_bundle, validate_result_paths
+from agent_capacity.workspace_contract import (
+    approval_boundary,
+    choose_workspace_provider,
+    fingerprint,
+)
+
+WORKSPACE_PROVIDERS = {"sprites": SpritesProvider}
+
+
+def adapter(name: str, config: dict):
+    try:
+        return WORKSPACE_PROVIDERS[name](config["providers"].get(name, {}))
+    except KeyError:
+        raise ValueError("unsupported workspace provider") from None
+
+
+def plan(cli, request: dict, args, config: dict) -> tuple[dict, dict]:
+    candidates = [
+        adapter(name, config)
+        for name in WORKSPACE_PROVIDERS
+        if args.provider in ("auto", name)
+    ]
+    provider = choose_workspace_provider(
+        request, [item for item in candidates if item.ready()[0]]
+    )
+    if args.git_url or args.git_ref or args.image:
+        raise ValueError(
+            "workspace execution requires a local source snapshot, not an OCI image or remote Git fetch"
+        )
+    if not args.source_path or not Path(args.source_path).is_dir():
+        raise ValueError("workspace execution requires --source-path")
+    if not 60 <= args.max_runtime_seconds <= 3500:
+        raise ValueError("workspace runtime must be between 60 and 3500 seconds")
+    if not math.isfinite(args.estimated_cost_usd) or args.estimated_cost_usd <= 0:
+        raise ValueError(
+            "workspace execution requires a positive finite total execution and retention cost estimate"
+        )
+    job_id = uuid.uuid4().hex
+    job = {
+        "id": job_id,
+        "name": "ew-" + job_id,
+        "provider": provider.name,
+        "execution_contract": "workspace",
+        "workspace": request,
+        "source_path": str(Path(args.source_path).resolve()),
+        "command": args.workload_command,
+        "workload": args.workload,
+        "state": "planned",
+        "created_at": int(time.time()),
+        "cpu": provider.resources()["cpu"],
+        "memory_mb": 0,
+        "max_runtime_seconds": args.max_runtime_seconds,
+        "estimated_cost_usd": args.estimated_cost_usd,
+        "result_paths": validate_result_paths(args.result_path),
+    }
+    boundary = approval_boundary(job, provider.identity(provider.values))
+    result = {
+        "provider": provider.name,
+        "provider_config": {},
+        "workspace_boundary": boundary,
+        "boundary_sha256": fingerprint(boundary),
+        "resources": provider.resources(),
+        "retention": request["retention"],
+        "ready": provider.ready()[0],
+        "result_delivery": "verified workspace files; task completion is separate from retention",
+    }
+    result["trust"] = cli.evaluate_trust(job, result, config, args.approval_receipt)
+    job["plan"] = result
+    return job, result
+
+
+def assert_identity(provider, job: dict) -> dict | None:
+    value = provider.get(job["workspace_name"])
+    if value and value["id"] != job.get("workspace_id"):
+        raise ValueError("workspace name now refers to a different immutable identity")
+    return value
+
+
+def execute(cli, job: dict, config: dict, receipt: str | None) -> dict:
+    cli.require_trust(job, job["plan"], config, receipt)
+    provider = adapter(job["provider"], config)
+    if not provider.ready()[0]:
+        raise ValueError("workspace provider is not configured")
+    request = job["workspace"]
+    if request.get("derivation", "snapshot") != "snapshot":
+        raise ValueError(
+            "native fork execution requires a verified native lifecycle; no snapshot substitution"
+        )
+    provider.verify_connectors(request["connectors"])
+    name = request.get("project", {}).get("name") or job["name"]
+    job.update(
+        workspace_name=name,
+        state="submitting",
+        approval_receipt=cli.trust_receipt(config["trust"]),
+    )
+    # Atomic project claim: a second local caller cannot mutate the same workspace.
+    with cli.locked_jobs() as (data, _):
+        for existing in data["jobs"]:
+            if (
+                existing.get("provider") == job["provider"]
+                and existing.get("workspace_name") == name
+                and not existing.get("workspace_released")
+            ):
+                raise ValueError(
+                    "workspace already has an unresolved task; recover and release it first"
+                )
+        data["jobs"].append(job)
+    source = None
+    try:
+        if request["intent"] == "project":
+            value = provider.get(name)
+            if not value or value["id"] != request["project"]["id"]:
+                raise ValueError("approved project Sprite identity does not match")
+        else:
+            if provider.get(name) is not None:
+                raise ValueError("new task workspace name already exists")
+            value = provider.create(name)
+        job["workspace_id"] = value["id"]
+        cli.update_job(job["id"], workspace_id=value["id"])
+        parent = request.get("parent")
+        if parent:
+            actual = provider.get(parent["name"])
+            if not actual or actual["id"] != parent["id"]:
+                raise ValueError("parent workspace identity mismatch")
+            if parent.get("checkpoint") and parent["checkpoint"] not in {
+                item["id"] for item in provider.checkpoints(parent["name"])
+            }:
+                raise ValueError("parent checkpoint not found")
+        if request["intent"] == "project":
+            if provider.policy(name) != request["network_policy"]:
+                raise ValueError("existing project policy differs from approval")
+        else:
+            provider.set_policy(name, request["network_policy"])
+        provider.verify_connectors(request["connectors"])
+        # Recheck the active authority immediately before reading/exporting source.
+        cli.require_trust(job, job["plan"], cli.load_config(), receipt)
+        source, manifest = package_source(job["source_path"], job["id"])
+        root = "/home/sprite/.elsewhere/tasks/" + job["id"]
+        lineage = {
+            "derivation": "repository-snapshot",
+            "parent": parent,
+            "source_revision": cli.run_text(
+                ["git", "-C", job["source_path"], "rev-parse", "HEAD"]
+            ),
+            "source_fingerprint": manifest["content_sha256"],
+        }
+        runner_spec = {
+            key: job[key]
+            for key in ("id", "command", "max_runtime_seconds", "result_paths")
+        }
+        runner_spec["exclusions"] = {
+            "paths": sorted(SOURCE_EXCLUDES),
+            "names": sorted(SOURCE_EXCLUDE_NAMES),
+            "suffixes": list(SOURCE_EXCLUDE_SUFFIXES),
+        }
+        runner_spec.update(
+            source_fingerprint=manifest["content_sha256"],
+            lineage=lineage,
+            activity_commands=provider.activity_commands(
+                job["id"], job["max_runtime_seconds"]
+            ),
+        )
+        cli.update_job(
+            job["id"],
+            remote_root=root,
+            lineage=lineage,
+            source_manifest=manifest,
+            retention_state="pending",
+            retention_expires_at=int(time.time()) + request["retention_seconds"],
+        )
+        provider.write(name, root + "/source.tar.gz", source.read_bytes())
+        provider.write(
+            name,
+            root + "/runner.py",
+            Path(__file__).with_name("workspace_runner.py").read_bytes(),
+        )
+        provider.write(name, root + "/spec.json", json.dumps(runner_spec).encode())
+        session = provider.start(
+            name,
+            ["python3", root + "/runner.py", root + "/spec.json"],
+            job["max_runtime_seconds"] + 30,
+        )
+        cli.update_job(
+            job["id"],
+            state="running",
+            session_id=session,
+            submitted_at=int(time.time()),
+        )
+    except BaseException as error:
+        cli.update_job(
+            job["id"],
+            state="submission_uncertain",
+            provider_evidence={"error": cli.redact_sensitive_text(str(error))},
+        )
+        raise
+    finally:
+        if source:
+            source.unlink(missing_ok=True)
+    return cli.find_job(job["id"])
+
+
+def action(cli, job: dict, action_name: str, config: dict) -> dict:
+    if (
+        action_name in ("status", "results", "logs")
+        and job.get("result", {}).get("state") == "collected"
+    ):
+        return job  # Verified local results remain readable after remote deletion or credential expiry.
+    provider = adapter(job["provider"], config)
+    # Receipt changes never authorize access to a previously selected destination.
+    cli.require_trust(job, job["plan"], config, job["approval_receipt"])
+    if not job.get("workspace_id"):
+        raise ValueError(
+            "workspace identity unresolved; automatic adoption or resubmission is forbidden"
+        )
+    value = assert_identity(provider, job)
+    if (
+        action_name == "cleanup"
+        and job.get("retention_state") == "deleted"
+        and value is None
+    ):
+        return job
+    if value is None:
+        raise ValueError("workspace is absent; absence is not completion evidence")
+    if action_name in ("status", "results", "logs"):
+        if job.get("result", {}).get("state") != "collected":
+            try:
+                raw = provider.read(
+                    job["workspace_name"], job["remote_root"] + "/result.tar.gz"
+                )
+            except SpriteError as error:
+                if error.status == 404:
+                    if action_name == "logs":
+                        evidence = {}
+                        for channel in ("stdout", "stderr"):
+                            try:
+                                content = provider.read(
+                                    job["workspace_name"],
+                                    job["remote_root"] + "/result/" + channel + ".txt",
+                                )
+                                evidence[channel] = cli.redact_sensitive_text(
+                                    content[-12000:].decode("utf-8", errors="replace")
+                                )
+                            except SpriteError as log_error:
+                                if log_error.status != 404:
+                                    raise
+                        cli.update_job(
+                            job["id"],
+                            provider_evidence={"unverified_session_output": evidence},
+                        )
+                    if (
+                        time.time()
+                        > job.get("submitted_at", job["created_at"])
+                        + job["max_runtime_seconds"]
+                        + 60
+                    ):
+                        cli.update_job(job["id"], state="outcome_unknown")
+                    return cli.find_job(job["id"])
+                raise
+            cache = cli.result_cache_path(job["id"])
+            cache.mkdir(parents=True, exist_ok=True)
+            bundle = cache / "workspace.tar.gz"
+            bundle.write_bytes(raw)
+            result = inspect_result_bundle(bundle, cache / "verified")
+            manifest = json.loads((cache / "verified/manifest.json").read_text())
+            if (
+                manifest["job_id"] != job["id"]
+                or manifest.get("lineage") != job["lineage"]
+                or manifest.get("requested_paths") != job["result_paths"]
+                or manifest.get("source_fingerprint")
+                != job["lineage"]["source_fingerprint"]
+            ):
+                raise ValueError(
+                    "returned result source lineage differs from dispatched task"
+                )
+            result.update(
+                state="collected",
+                location=str(cache / "verified"),
+                activity_released=manifest.get("activity_released") is True,
+            )
+            cli.update_job(
+                job["id"],
+                result=result,
+                returncode=result["exit_code"],
+                state="succeeded" if result["exit_code"] == 0 else "failed",
+                completed_at=int(time.time()),
+            )
+        return cli.find_job(job["id"])
+    if action_name == "cancel":
+        if job.get("result", {}).get("state") == "collected":
+            return job
+        if not job.get("session_id"):
+            raise ValueError("cannot cancel an unidentified session")
+        provider.cancel(job["workspace_name"], job["session_id"])
+        cli.update_job(job["id"], state="cancelled", completed_at=int(time.time()))
+        return cli.find_job(job["id"])
+    if action_name != "cleanup":
+        raise ValueError("unsupported workspace action")
+    if job.get("result", {}).get("state") != "collected":
+        raise ValueError(
+            "recover verified results before workspace retention or deletion"
+        )
+    retention = job["workspace"]["retention"]
+    if retention != "delete" and not job["result"].get("activity_released"):
+        raise ValueError(
+            "task activity release is unverified; do not claim sleep or completed retention"
+        )
+    if retention == "delete":
+        if job["workspace"]["intent"] == "project":
+            raise ValueError("cannot delete project workspace")
+        provider.delete(job["workspace_name"])
+        if provider.get(job["workspace_name"]) is not None:
+            raise ValueError("workspace deletion has not been verified")
+        state = "deleted"
+    elif retention == "checkpoint":
+        checkpoint = job.get("retained_checkpoint")
+        if not checkpoint:
+            # Persist intent; uncertain checkpoint creation is not retried automatically.
+            if job.get("retention_state") == "checkpointing":
+                raise ValueError("checkpoint outcome uncertain; reconcile before retry")
+            cli.update_job(job["id"], retention_state="checkpointing")
+            checkpoint = provider.checkpoint(
+                job["workspace_name"], "elsewhere-" + job["id"]
+            )
+            cli.update_job(job["id"], retained_checkpoint=checkpoint)
+        state = "checkpointed"
+    else:
+        state = "retained" if retention == "keep" else "idle-pause-allowed"
+    cli.update_job(job["id"], retention_state=state, workspace_released=True)
+    return cli.find_job(job["id"])
