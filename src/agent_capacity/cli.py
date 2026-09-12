@@ -1444,6 +1444,10 @@ def cleanup_stale() -> dict[str, Any]:
                 continue
             worker_pid = int(job.get("worker_pid", 0))
             process_pid = int(job.get("process_pid", 0))
+            # Older/imported waiting records may not carry process evidence.
+            # Absence of evidence is not evidence that a managed worker died.
+            if worker_pid <= 0 and process_pid <= 0:
+                continue
             if pid_alive(worker_pid) or pid_alive(process_pid):
                 continue
             job["state"] = "failed"
@@ -1864,6 +1868,7 @@ def public_local_job(job: dict[str, Any]) -> dict[str, Any]:
 
 def run_local_job_action(job: dict[str, Any], action: str) -> int:
     if action == "status":
+        cleanup_stale()
         current = find_job(job["id"]) or job
         print_json({"job": public_local_job(current)})
         return 0
@@ -2178,6 +2183,11 @@ def job_summary(job: dict[str, Any]) -> dict[str, Any]:
 
 
 def queue_snapshot(history_limit: int = 20) -> dict[str, Any]:
+    # Queue is an operational truth surface, not a passive dump of the ledger.
+    # A managed local worker can disappear between polls (host shutdown, disk
+    # exhaustion, SIGKILL). Reconcile that state before reporting capacity so a
+    # dead job cannot continue to look active or hold admission hostage.
+    cleanup_stale()
     with locked_jobs() as (job_data, _):
         jobs = [dict(job) for job in job_data.get("jobs", [])]
     with locked_state() as (lease_data, _):
@@ -3249,6 +3259,7 @@ def main() -> int:
 
     if args.command == "acquire":
         validate_count_and_ttl(args.count, args.ttl)
+        cleanup_stale()
         code, value = acquire(args.workload, args.count, args.owner, args.ttl)
         print_json(value)
         return code
@@ -3273,6 +3284,7 @@ def main() -> int:
             command = command[1:]
         if not command:
             raise SystemExit("run requires a command after --")
+        cleanup_stale()
         code, value = acquire(args.workload, args.count, args.owner, args.ttl)
         if code:
             if args.queue:

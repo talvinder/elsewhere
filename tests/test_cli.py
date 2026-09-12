@@ -386,6 +386,36 @@ def main() -> None:
         assert stale_cleanup["jobs"][0]["memory_mb"] == 2500
         assert stale_cleanup["released_reservations"] == ["stale-job-token"]
 
+        auto_directory = Path(directory) / "auto-stale"
+        auto_directory.mkdir()
+        auto_state = auto_directory / "leases.json"
+        auto_jobs = auto_directory / "jobs.json"
+        auto_state.write_text(json.dumps({
+            "version": 1, "leases": [{
+                "token": "auto-stale-token", "owner": "test:auto-stale", "owner_pid": 99999999,
+                "workload": "build", "count": 1, "reserved_mb": 4200,
+                "created_at": int(time.time()) - 120, "expires_at": int(time.time()) + 600,
+            }],
+        }))
+        auto_jobs.write_text(json.dumps({
+            "version": 1, "jobs": [{
+                "id": "auto-stale", "provider": "local", "state": "running",
+                "owner": "test:auto-stale", "workload": "build", "count": 1,
+                "worker_pid": 99999998, "process_pid": 99999999,
+                "lease_token": "auto-stale-token", "created_at": int(time.time()) - 120,
+            }],
+        }))
+        _, reconciled_queue = call(auto_state, "queue", "--json", level=80, host_metrics=host_metrics)
+        assert reconciled_queue["counts"]["local_running"] == 0
+        assert reconciled_queue["counts"]["reservations"] == 0
+        assert reconciled_queue["history"][0]["id"] == "auto-stale"
+        assert reconciled_queue["history"][0]["state"] == "failed"
+        _, auto_readmitted = call(
+            auto_state, "acquire", "--workload", "build", "--owner", "test:auto-readmitted",
+            level=80, host_metrics=host_metrics,
+        )
+        assert auto_readmitted["allowed"] is True
+
         parsed_swap = parse_swap_usage("vm.swapusage: total = 8.00G  used = 7.27G  free = 747.12M")
         assert parsed_swap["swap_known"] is True
         assert parsed_swap["swap_total_mb"] == 8192
